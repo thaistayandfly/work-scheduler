@@ -195,15 +195,18 @@ function renderWeek() {
     card.className = "day-card" + (ds === today ? " is-today" : "");
     card.dataset.date = ds;
 
-    const head = document.createElement("div");
-    head.innerHTML =
+    const label = document.createElement("div");
+    label.className = "day-label";
+    label.innerHTML =
       '<div class="day-name">' +
       d.toLocaleDateString(undefined, { weekday: "short" }) +
       '</div><div class="day-num">' +
       d.getDate() +
       "</div>";
-    card.appendChild(head);
+    card.appendChild(label);
 
+    const group = document.createElement("div");
+    group.className = "pill-group";
     WORK_TYPES.forEach((type) => {
       const pill = document.createElement("button");
       pill.className = "pill";
@@ -211,8 +214,9 @@ function renderWeek() {
       pill.dataset.type = type;
       pill.textContent = type;
       pill.addEventListener("click", () => togglePill(ds, type, pill, card));
-      card.appendChild(pill);
+      group.appendChild(pill);
     });
+    card.appendChild(group);
 
     grid.appendChild(card);
   });

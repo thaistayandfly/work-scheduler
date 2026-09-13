@@ -11,26 +11,29 @@
   --danger: #A23B2E;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
   font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
   min-height: 100vh;
 }
 
 #app {
-  max-width: 960px;
+  max-width: 640px;
   margin: 0 auto;
-  padding: 28px 20px 120px;
+  padding: 20px 16px calc(110px + env(safe-area-inset-bottom));
 }
 
 .brand {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 20px;
   letter-spacing: -0.01em;
 }
 .brand span { color: var(--event); }
@@ -39,45 +42,50 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 20px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .auth-area { display: flex; align-items: center; gap: 12px; }
 
-.user-email { font-size: 14px; color: var(--muted); }
+.user-email {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-button { font-family: inherit; cursor: pointer; }
+button { font-family: inherit; cursor: pointer; -webkit-appearance: none; }
 
 .btn-ghost {
   background: var(--ink);
   color: var(--bg);
   border: none;
-  padding: 10px 18px;
-  border-radius: 3px;
+  padding: 12px 18px;
+  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
+  min-height: 44px;
 }
-.btn-ghost:hover { opacity: 0.85; }
+.btn-ghost:active { opacity: 0.85; }
 
 .btn-text {
   background: none;
   border: none;
   color: var(--event);
   font-size: 14px;
-  font-weight: 500;
-  padding: 0;
+  font-weight: 600;
+  padding: 10px 0;
 }
-.btn-text:hover { text-decoration: underline; }
 
 .controls {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .calendar-select {
@@ -86,86 +94,108 @@ button { font-family: inherit; cursor: pointer; }
   gap: 10px;
   font-size: 14px;
 }
-.calendar-select label { color: var(--muted); }
+.calendar-select label { color: var(--muted); flex-shrink: 0; }
 
 #calendarSelect {
   font-family: inherit;
-  font-size: 14px;
-  padding: 7px 10px;
+  font-size: 15px;
+  padding: 10px 10px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
 }
 
 .week-nav {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
 }
 
 .nav-arrow {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  width: 32px;
-  height: 32px;
-  border-radius: 3px;
-  font-size: 16px;
+  background: transparent;
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 5px;
+  font-size: 18px;
   line-height: 1;
   color: var(--ink);
+  flex-shrink: 0;
 }
-.nav-arrow:hover { background: var(--event-tint); border-color: var(--event); }
+.nav-arrow:active { background: var(--event-tint); }
 
 .week-label {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 15px;
-  min-width: 170px;
+  font-size: 14px;
   text-align: center;
+  flex: 1;
 }
 
 .week-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .day-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-top: 3px solid var(--line);
-  border-radius: 3px;
-  padding: 14px 10px;
+  border-left: 4px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.15s;
+}
+.day-card.has-selection { border-left-color: var(--ink); }
+.day-card.is-today .day-num { color: var(--event); }
+
+.day-label {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  transition: border-color 0.15s;
+  width: 46px;
+  flex-shrink: 0;
 }
-.day-card.has-selection { border-top-color: var(--ink); }
-.day-card.is-today .day-num { color: var(--event); }
 
 .day-name {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
   font-weight: 500;
 }
 
 .day-num {
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
 }
 
+.pill-group {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
 .pill {
-  width: 100%;
+  flex: 1;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  padding: 8px 4px;
-  border-radius: 3px;
+  padding: 12px 4px;
+  border-radius: 6px;
+  min-height: 46px;
 }
 
 .pill[data-type="Event"].is-active {
@@ -178,13 +208,13 @@ button { font-family: inherit; cursor: pointer; }
   border-color: var(--warehouse);
   color: var(--warehouse);
 }
-.pill:hover { border-color: var(--ink); }
 
 .empty-state {
   text-align: center;
   color: var(--muted);
   margin-top: 60px;
   font-size: 15px;
+  padding: 0 20px;
 }
 
 .save-bar {
@@ -194,52 +224,55 @@ button { font-family: inherit; cursor: pointer; }
   right: 0;
   background: var(--surface);
   border-top: 1px solid var(--line);
-  padding: 16px 24px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  max-width: 960px;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
   margin: 0 auto;
 }
 
-.status-text { font-size: 13px; color: var(--muted); }
+.status-text { font-size: 13px; color: var(--muted); text-align: center; }
 
 .btn-primary {
   background: var(--event);
   color: #fff;
   border: none;
-  padding: 11px 22px;
-  border-radius: 3px;
-  font-size: 14px;
+  padding: 14px 22px;
+  border-radius: 6px;
+  font-size: 15px;
   font-weight: 600;
+  min-height: 48px;
+  width: 100%;
 }
-.btn-primary:hover { background: #234c76; }
+.btn-primary:active { background: #234c76; }
 .btn-primary:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
 
 .toast {
   position: fixed;
-  bottom: 90px;
+  bottom: 100px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--ink);
   color: var(--bg);
   padding: 10px 18px;
-  border-radius: 3px;
+  border-radius: 6px;
   font-size: 14px;
+  max-width: 90vw;
+  text-align: center;
 }
 .toast.error { background: var(--danger); }
 
-@media (max-width: 720px) {
-  .week-grid { grid-template-columns: repeat(7, 1fr); gap: 6px; }
-  .day-card { padding: 10px 4px; }
-  .pill { font-size: 11px; padding: 7px 2px; }
-  .save-bar { flex-direction: column; gap: 10px; align-items: stretch; text-align: center; }
-}
-
-@media (max-width: 480px) {
-  .week-grid { grid-template-columns: repeat(7, 1fr); }
-  .day-name { font-size: 10px; }
-  .day-num { font-size: 18px; }
+/* Desktop / wider screens: light touch-up, still same component structure */
+@media (min-width: 700px) {
+  #app { padding: 32px 24px calc(110px + env(safe-area-inset-bottom)); }
+  .controls { flex-direction: row; justify-content: space-between; align-items: center; }
+  .calendar-select { flex: none; }
+  #calendarSelect { min-width: 220px; }
+  .week-nav { max-width: 320px; }
+  .save-bar { flex-direction: row; justify-content: space-between; align-items: center; }
+  .status-text { text-align: left; }
+  .btn-primary { width: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
