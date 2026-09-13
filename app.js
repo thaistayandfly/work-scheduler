@@ -236,22 +236,32 @@ function togglePill(ds, type, pillEl, cardEl) {
 function loadEventsForWeek() {
   if (!accessToken) return;
   const start = new Date(currentWeekStart);
+  start.setDate(start.getDate() - 1); // pad a day either side to dodge timezone edge effects on all-day events
   const end = new Date(currentWeekStart);
-  end.setDate(end.getDate() + 7);
+  end.setDate(end.getDate() + 8);
+
+  const params = new URLSearchParams({
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: "true",
+    privateExtendedProperty: "appTag=" + APP_TAG,
+  });
 
   const url =
     "https://www.googleapis.com/calendar/v3/calendars/" +
     encodeURIComponent(selectedCalendarId) +
-    "/events?timeMin=" +
-    start.toISOString() +
-    "&timeMax=" +
-    end.toISOString() +
-    "&singleEvents=true&privateExtendedProperty=appTag%3D" +
-    APP_TAG;
+    "/events?" +
+    params.toString();
 
   apiFetch(url)
     .then((r) => r.json())
     .then((data) => {
+      if (data.error) {
+        console.error("ShiftBoard: events.list error", data.error);
+        showToast("Couldn't load events: " + data.error.message, true);
+        return;
+      }
+      console.log("ShiftBoard: loaded", (data.items || []).length, "tagged event(s) for this week", data.items);
       (data.items || []).forEach((item) => {
         const ds = item.start && item.start.date;
         const type = item.extendedProperties && item.extendedProperties.private && item.extendedProperties.private.workType;
@@ -264,7 +274,9 @@ function loadEventsForWeek() {
       syncPillsToState();
       updateSaveState();
     })
-    .catch(() => {});
+    .catch((err) => {
+      console.error("ShiftBoard: loadEventsForWeek failed", err);
+    });
 }
 
 function syncPillsToState() {
