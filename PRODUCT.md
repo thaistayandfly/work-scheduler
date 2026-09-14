@@ -14,7 +14,7 @@ People who work two kinds of shifts: event crew ("Event") and warehouse ("Wareho
 
 **Part 1 (built):** ShiftBoard turns "which days am I working, and where" into Google Calendar events. Users mark every work day they already know, often one or more weeks at a time, and save once.
 
-**Part 2 (in progress; phase 1 of 3 built):** after the shifts happen, users record the real start and end times, nights slept at work, expenses and "Other" jobs. ShiftBoard works out the pay from each person's own rates, fills a monthly table in their own Google Sheet, and at month end, after the user has reviewed it, emails a PDF of the month to the company.
+**Part 2 (in progress; phases 1 and 2 of 3 built):** after the shifts happen, users record the real start and end times, nights slept at work, expenses and "Other" jobs. ShiftBoard works out the pay from each person's own rates, fills a monthly table in their own Google Sheet, and at month end, after the user has reviewed it, emails a PDF of the month to the company.
 
 Success means the calendar, the sheet and the PDF always agree: no duplicates, no lost shifts, no wrong pay.
 
@@ -38,7 +38,7 @@ A two-tap shift board that writes straight into each person's own Google Calenda
 - The Google OAuth app is in Testing mode: at most 100 approved test users, and each coworker must be added as one. Users see an "unverified app" warning once when approving.
 - Works with any calendar the user can edit. Saves all-day events titled "Event" or "Warehouse" (plus a hidden tag) and also recognises "Work: Event" / "Work: Warehouse" from earlier versions.
 
-### Part 2 rules (confirmed; times, nights, expenses and Other jobs are built, pay and sending are not)
+### Part 2 rules (confirmed; everything except the PDF and sending is built)
 
 - **Work types:** Event and Warehouse are the main ones. "Other" is rare and stays visually minor: it needs start and end times and an amount; the description is optional.
 - **Times:** every shift needs a real start and end before its month can be sent. A shift can cross midnight and has no length limit. An all-day calendar event means "times not entered yet"; entering times turns it into a timed event.

@@ -5,7 +5,7 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 ## Setup (10 min)
 
 1. **Google Cloud Console** (same project as your login button):
-   - APIs & Services → Library → confirm **Google Calendar API** is enabled.
+   - APIs & Services → Library → confirm **Google Calendar API**, **Google Sheets API** and **Google Drive API** are enabled (the last two are for the Pay tab's sheet).
    - APIs & Services → Credentials → **Create Credentials → OAuth client ID → Web application**.
      - Under **Authorized JavaScript origins**, add your GitHub Pages URL, e.g. `https://yourname.github.io`.
      - No redirect URI needed.
@@ -31,6 +31,7 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 - A day shows **Event** / **Warehouse** as selected when the calendar has an event with that title on it (`Event`, `Warehouse`, `Work: Event` or `Work: Warehouse`, any case) — including events from the first version of the app or added by hand. Other events are ignored.
 - **Save to Calendar** saves every week at once. It compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included). Anything that fails stays marked so you can save again.
 - **Tap a date** to enter a shift's real start and end (it can run past midnight), mark a night slept at work (Event), add expenses, or add an **Other** job (times and amount required, description optional). Entering times turns the calendar event from all-day into a timed one. A red banner lists past shifts from this month and last that still need their times.
+- **Pay** tab: connect Google Drive once and ShiftBoard creates a "ShiftBoard pay" sheet in your own Drive (it can only open files it creates). Enter your full name, the company email and your four rates; they're saved in the sheet's Settings tab. Each month shows every shift's pay, the breakdown and the total to pay. **Update my sheet** writes the month into its own tab (English and Hebrew), and asks first if that tab was changed by hand.
 - **Sign out** forgets this browser's session so a coworker can sign in with their own Google account. Each coworker has to be added under **Test users** first (step 2).
 
 ## Known limits

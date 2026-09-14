@@ -909,7 +909,8 @@ button.day-label {
 }
 
 .shift-form input:not([type="checkbox"]),
-.shift-form select {
+.shift-form select,
+.settings-form input {
   width: 100%;
   min-width: 0;
   min-height: 48px;
@@ -1000,6 +1001,307 @@ button.day-label {
 .add-other {
   width: 100%;
   margin-top: var(--s5);
+}
+
+/* ---------- Views: Shifts and Pay ---------- */
+
+.view-tabs {
+  display: flex;
+  gap: var(--s2);
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin-inline: auto;
+  padding: 0 var(--gutter);
+}
+
+.view-tab {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  font: 700 1.0625rem/1 var(--font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.view-tab[aria-pressed="true"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+}
+
+body.is-pay .toast {
+  bottom: calc(var(--s5) + env(safe-area-inset-bottom));
+}
+
+.pay-view {
+  padding-top: var(--s4);
+}
+
+.connect {
+  display: grid;
+  justify-items: start;
+  gap: var(--s4);
+  max-width: 36rem;
+  padding-block: var(--s5);
+}
+
+.connect-title {
+  font: 700 1.75rem/1.05 var(--font-label);
+  text-transform: uppercase;
+}
+
+.pay-content {
+  display: grid;
+  gap: var(--s5);
+}
+
+.month-nav {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  padding-bottom: var(--s2);
+  border-bottom: 2px solid var(--ink);
+}
+
+.month-title {
+  font: 700 1.375rem/1.1 var(--font-label);
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.month-step {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: none;
+}
+
+.month-step::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  background: var(--ink);
+  -webkit-mask: var(--chevron) center / contain no-repeat;
+  mask: var(--chevron) center / contain no-repeat;
+}
+
+.month-step.prev::before {
+  transform: rotate(90deg);
+}
+
+.month-step.next::before {
+  transform: rotate(-90deg);
+}
+
+.pay-status {
+  margin-top: calc(-1 * var(--s3));
+  color: var(--ink-2);
+}
+
+.pay-status.needs-times {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+.total-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--rule);
+  font: 700 1.125rem/1 var(--font-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.total-line strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.total-breakdown {
+  display: grid;
+  gap: 6px;
+  margin: var(--s3) 0 0;
+}
+
+.total-breakdown div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.total-breakdown dt {
+  color: var(--ink-2);
+}
+
+.total-breakdown dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.pay-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pay-line {
+  --tape: var(--masking);
+  --tape-ink: var(--masking-ink);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s3);
+  row-gap: 4px;
+  width: 100%;
+  padding: var(--s3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  text-align: start;
+}
+
+.pay-line.type-event {
+  --tape: var(--event);
+  --tape-ink: var(--event-ink);
+}
+
+.pay-line.type-warehouse {
+  --tape: var(--warehouse);
+  --tape-ink: var(--warehouse-ink);
+}
+
+.pay-type {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 4px 12px;
+  background: var(--tape);
+  color: var(--tape-ink);
+  font: 700 0.8125rem/1 var(--font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  -webkit-mask: var(--tape-mask);
+  mask: var(--tape-mask);
+}
+
+.pay-when {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-detail {
+  grid-column: 1;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.pay-detail.needs-times {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+.pay-amount {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: center;
+  font: 700 1.125rem/1 var(--font-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings {
+  padding-top: var(--s3);
+  border-top: 2px solid var(--ink);
+}
+
+.settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings summary::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  background: var(--ink);
+  -webkit-mask: var(--chevron) center / contain no-repeat;
+  mask: var(--chevron) center / contain no-repeat;
+  transition: transform 150ms var(--ease-out);
+}
+
+.settings[open] summary::after {
+  transform: rotate(180deg);
+}
+
+a.btn-text {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.settings summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 44px;
+  cursor: pointer;
+  font: 700 1.125rem/1 var(--font-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-form {
+  display: grid;
+  gap: var(--s4);
+  padding-top: var(--s3);
+}
+
+.settings-form .btn-primary {
+  justify-self: start;
+}
+
+.rates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+/* Wide screens: totals and actions on the left, the month's shifts beside them */
+@media (min-width: 60rem) {
+  .pay-content {
+    grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas: "nav lines" "status lines" "totals lines" "actions lines" "settings lines";
+    align-items: start;
+    column-gap: var(--s7);
+  }
+
+  .month-nav { grid-area: nav; }
+  .pay-status { grid-area: status; }
+  .pay-totals { grid-area: totals; }
+  .sheet-actions { grid-area: actions; }
+  .settings { grid-area: settings; }
+
+  .pay-lines {
+    grid-area: lines;
+    border-top: 2px solid var(--ink);
+  }
 }
 
 /* ---------- Narrow phones ---------- */

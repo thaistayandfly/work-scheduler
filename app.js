@@ -1,6 +1,8 @@
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+// Only the files this app creates (the pay sheet), nothing else in the user's Drive
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 // "email" lets us show who's signed in and pass it as login_hint when the token needs renewing
-const SCOPES = CALENDAR_SCOPE + " email";
+const SCOPES = CALENDAR_SCOPE + " " + DRIVE_SCOPE + " email";
 const APP_TAG = "shiftboard";
 const WORK_TYPES = ["Event", "Warehouse"];
 const OTHER = "Other"; // the rare one-off paid job, kept off the two main tapes
@@ -11,6 +13,7 @@ const WEEKS_PER_PAGE = 4; // weeks on the board at first, and how many "Show 4 m
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiresAt = 0;
+let grantedScopes = ""; // what the current token may do; older saved tokens predate the Drive permission
 
 let calendars = [];
 let selectedCalendarId = localStorage.getItem("sb_calendarId") || "primary";
@@ -58,6 +61,16 @@ window.addEventListener("load", () => {
   el("saveBtn").addEventListener("click", saveChanges);
   el("needsTimesBtn").addEventListener("click", openMissingTimes);
   el("boardHint").hidden = !!localStorage.getItem("sb_hintSeen");
+  el("tabShifts").addEventListener("click", () => showView("shifts"));
+  el("tabPay").addEventListener("click", () => showView("pay"));
+  el("connectDriveBtn").addEventListener("click", () => {
+    pendingView = "pay"; // come back to Pay once the Drive permission is granted
+    signIn();
+  });
+  el("prevMonth").addEventListener("click", () => changePayMonth(-1));
+  el("nextMonth").addEventListener("click", () => changePayMonth(1));
+  el("settingsForm").addEventListener("submit", submitSettings);
+  el("writeSheetBtn").addEventListener("click", updateSheet);
   el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) {
@@ -88,6 +101,7 @@ function signOut() {
   if (!confirmDiscard()) return;
   localStorage.removeItem("sb_email");
   localStorage.removeItem("sb_calendarId");
+  forgetSheet();
   selectedCalendarId = "primary";
   calendars = [];
   el("accountEmail").textContent = "";
@@ -103,7 +117,7 @@ function restoreSession() {
     saved = JSON.parse(localStorage.getItem("sb_token"));
   } catch (e) {}
   if (saved && saved.accessToken && saved.expiresAt - Date.now() > MIN_RESTORE_MS) {
-    startSession(saved.accessToken, saved.expiresAt);
+    startSession(saved.accessToken, saved.expiresAt, saved.scope || "");
   } else {
     localStorage.removeItem("sb_token");
   }
@@ -119,18 +133,23 @@ function onTokenReceived(resp) {
     return;
   }
   const expiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
-  localStorage.setItem("sb_token", JSON.stringify({ accessToken: resp.access_token, expiresAt }));
-  startSession(resp.access_token, expiresAt);
+  localStorage.setItem("sb_token", JSON.stringify({ accessToken: resp.access_token, expiresAt, scope: resp.scope || "" }));
+  startSession(resp.access_token, expiresAt, resp.scope || "");
 }
 
-function startSession(token, expiresAt) {
+function startSession(token, expiresAt, scope) {
   accessToken = token;
   tokenExpiresAt = expiresAt;
+  grantedScopes = scope || "";
   showSignedIn(true);
   fetchUserEmail();
   // Signing back in after the token expired mid-edit: refresh what's saved but keep the unsaved toggles
   if (isDirty()) loadWeeks(weeks);
   else loadCalendars();
+  if (pendingView) {
+    showView(pendingView);
+    pendingView = null;
+  }
 }
 
 function showSignedIn(signedIn) {
@@ -139,6 +158,11 @@ function showSignedIn(signedIn) {
   el("workspace").hidden = !signedIn;
   el("saveBar").hidden = !signedIn;
   el("account").hidden = !signedIn;
+  el("viewTabs").hidden = !signedIn;
+  el("payView").hidden = true; // every sign-in starts on the Shifts view
+  el("tabShifts").setAttribute("aria-pressed", "true");
+  el("tabPay").setAttribute("aria-pressed", "false");
+  document.body.classList.toggle("is-pay", false);
 }
 
 // Only used to display the email and pre-fill the next sign-in, so it uses plain fetch():
@@ -457,12 +481,17 @@ function savedShifts(ds) {
 const moneyFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "ILS" });
 const clock = (d) => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 
-function shiftSummary(type, event) {
-  if (!isTimed(event)) return type + ": add times";
+// "06:00–04:00 (+1)": the (+n) says how many days later the shift ended
+function timeRange(event) {
   const start = new Date(event.start.dateTime);
   const end = new Date(event.end.dateTime);
   const laterDays = Math.round((new Date(dateStr(end) + "T00:00") - new Date(dateStr(start) + "T00:00")) / 864e5);
-  let text = type + " " + clock(start) + "–" + clock(end) + (laterDays > 0 ? " (+" + laterDays + ")" : "");
+  return clock(start) + "–" + clock(end) + (laterDays > 0 ? " (+" + laterDays + ")" : "");
+}
+
+function shiftSummary(type, event) {
+  if (!isTimed(event)) return type + ": add times";
+  let text = type + " " + timeRange(event);
   const props = privateProps(event);
   if (type === OTHER) text += ", " + moneyFormat.format(Number(props.amount) || 0);
   if (props.slept === "1") text += ", night";
@@ -784,8 +813,7 @@ function submitShiftForm(form, type, event) {
       form.remove();
       if (!form.dataset.keepOpen || !panel.querySelector("form")) panel.close();
       showToast(type + " saved to Google Calendar");
-      loadWeeks(weeks);
-      loadMissingTimes();
+      refreshAfterShiftChange();
     })
     .catch((err) => {
       btn.disabled = false;
@@ -799,10 +827,517 @@ function removeOtherJob(event) {
     .then(() => {
       el("dayPanel").close();
       showToast("Other job removed");
-      loadWeeks(weeks);
-      loadMissingTimes();
+      refreshAfterShiftChange();
     })
     .catch((err) => showApiError("Couldn't remove the job", err));
+}
+
+function refreshAfterShiftChange() {
+  loadWeeks(weeks);
+  loadMissingTimes();
+  if (!el("payView").hidden) renderPayMonth();
+}
+
+// ---------- The pay sheet: a Google Sheet in the user's own Drive ----------
+
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
+const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
+// Settings tab: A = label, B = value, C = key. Values are found by key, so rows moved by hand still work.
+const SETTINGS_ROWS = [
+  ["ShiftBoard settings · הגדרות"],
+  [],
+  ["Full name · שם מלא", "full_name"],
+  ["Company email · מייל החברה", "company_email"],
+  [],
+  ["Warehouse, per hour (₪) · מחסן, לשעה", "rate_warehouse"],
+  ["Event, per day (₪) · אירוע, ליום", "rate_event"],
+  ["Event extra hour (₪) · שעה נוספת באירוע", "rate_extra"],
+  ["Night at work (₪) · לינה", "rate_night"],
+];
+
+let sheetId = localStorage.getItem("sb_sheetId");
+let settings = null; // { full_name, company_email, rate_* } as last read from or saved to the sheet
+
+const hasDrive = () => grantedScopes.split(" ").includes(DRIVE_SCOPE);
+
+function forgetSheet() {
+  sheetId = null;
+  settings = null;
+  localStorage.removeItem("sb_sheetId");
+}
+
+function jsonRequest(url, method, body) {
+  return apiFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+}
+
+// Finds this user's pay sheet by a hidden Drive property (so every device finds the same one), or creates it
+function ensureSheet() {
+  if (sheetId) return Promise.resolve(sheetId);
+  const q = encodeURIComponent("appProperties has { key='shiftboard' and value='pay-sheet' } and trashed=false");
+  return apiFetch(DRIVE_FILES + "?q=" + q + "&fields=files(id)")
+    .then((r) => r.json())
+    .then((data) => (data.files && data.files.length ? data.files[0].id : createSheet()))
+    .then((id) => {
+      sheetId = id;
+      localStorage.setItem("sb_sheetId", id);
+      return id;
+    });
+}
+
+function createSheet() {
+  return jsonRequest(SHEETS_API, "POST", { properties: { title: "ShiftBoard pay" }, sheets: [{ properties: { title: "Settings" } }] })
+    .then((sheet) =>
+      jsonRequest(DRIVE_FILES + "/" + sheet.spreadsheetId, "PATCH", { appProperties: { shiftboard: "pay-sheet" } })
+        .then(() => writeSettingsTab(sheet.spreadsheetId, {}))
+        .then(() => sheet.spreadsheetId)
+    );
+}
+
+function writeSettingsTab(id, values) {
+  const rows = SETTINGS_ROWS.map(([label, key]) => (key ? [label, values[key] == null ? "" : values[key], key] : label ? [label] : []));
+  return jsonRequest(SHEETS_API + "/" + id + "/values/Settings!A1:C" + rows.length + "?valueInputOption=RAW", "PUT", { values: rows });
+}
+
+function readSettingsTab() {
+  return ensureSheet()
+    .then((id) => apiFetch(SHEETS_API + "/" + id + "/values/Settings!A1:C50"))
+    .then((r) => r.json());
+}
+
+// Reads the Settings tab by key. A sheet or tab deleted by hand is recreated instead of failing.
+function loadSettings() {
+  return readSettingsTab()
+    .catch((err) => {
+      if (/not found/i.test(err.message)) {
+        forgetSheet();
+        return readSettingsTab();
+      }
+      if (/parse range/i.test(err.message)) {
+        return jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [{ addSheet: { properties: { title: "Settings" } } }] })
+          .then(() => writeSettingsTab(sheetId, {}))
+          .then(readSettingsTab);
+      }
+      throw err;
+    })
+    .then((data) => {
+      settings = {};
+      (data.values || []).forEach((row) => {
+        if (row[2]) settings[row[2]] = row[1] == null ? "" : String(row[1]).trim();
+      });
+      return settings;
+    });
+}
+
+function saveSettings(values) {
+  return ensureSheet()
+    .then((id) => writeSettingsTab(id, values))
+    .then(() => (settings = Object.assign({}, values)));
+}
+
+// Hand-typed rates like "₪ 55" or "55.5" still read as numbers
+function ratesFrom(s) {
+  const n = (v) => Number(String(v || "").replace(/[^\d.]/g, "")) || 0;
+  return { warehouse: n(s.rate_warehouse), event: n(s.rate_event), extra: n(s.rate_extra), night: n(s.rate_night) };
+}
+
+// ---------- Pay ----------
+// Rates are per person, in ₪: { warehouse: per hour, event: per Event day, extra: per extra Event hour, night: per night }
+
+const EXTRA_AFTER_HOURS = 12; // an Event day covers 12 hours; from the 13th hour on, hours are extra
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+function startMs(event) {
+  return new Date(event.start.dateTime || event.start.date + "T00:00").getTime();
+}
+
+// One shift's pay. A shift without times can't be fully worked out yet (missingTimes): Warehouse pays
+// nothing until it has hours, and an Event shows only its fixed amount.
+function shiftPay(type, event, rates) {
+  const props = privateProps(event);
+  const hours = hoursOf(event);
+  const extraHours = type === "Event" && hours !== null ? Math.max(0, hours - EXTRA_AFTER_HOURS) : 0;
+  let pay = 0;
+  if (type === "Warehouse") pay = (hours || 0) * rates.warehouse;
+  else if (type === "Event") pay = rates.event + extraHours * rates.extra;
+  else pay = Number(props.amount) || 0;
+  pay = round2(pay);
+  const night = type === "Event" && props.slept === "1" ? rates.night : 0;
+  const expenses = round2(expensesOf(event).reduce((sum, x) => sum + Number(x.amount), 0));
+  return { hours, extraHours, pay, night, expenses, total: round2(pay + night + expenses), missingTimes: hours === null };
+}
+
+// Every shift that starts in the given month (0-based), in start order, with its pay
+function monthLines(items, year, month, rates) {
+  const prefix = year + "-" + String(month + 1).padStart(2, "0") + "-";
+  return items
+    .map((event) => ({ event, type: workTypeOf(event), ds: eventDate(event) }))
+    .filter((line) => line.type && line.ds && line.ds.startsWith(prefix))
+    .sort((a, b) => startMs(a.event) - startMs(b.event))
+    .map((line) => Object.assign(line, shiftPay(line.type, line.event, rates)));
+}
+
+function monthTotals(lines) {
+  const totals = {
+    warehouse: { count: 0, hours: 0, pay: 0 },
+    event: { count: 0, extraHours: 0, pay: 0 },
+    other: { count: 0, pay: 0 },
+    nights: { count: 0, pay: 0 },
+    expenses: 0,
+    total: 0,
+    missingTimes: 0,
+  };
+  lines.forEach((line) => {
+    const group = totals[line.type.toLowerCase()];
+    group.count++;
+    group.pay = round2(group.pay + line.pay);
+    if (line.type === "Warehouse") group.hours += line.hours || 0;
+    if (line.type === "Event") group.extraHours += line.extraHours;
+    if (line.night) {
+      totals.nights.count++;
+      totals.nights.pay = round2(totals.nights.pay + line.night);
+    }
+    totals.expenses = round2(totals.expenses + line.expenses);
+    totals.total = round2(totals.total + line.total);
+    if (line.missingTimes) totals.missingTimes++;
+  });
+  return totals;
+}
+
+// ---------- The month's table (written to the pay sheet, and later the PDF) ----------
+
+const TYPE_LABELS = { Event: "Event · אירוע", Warehouse: "Warehouse · מחסן", Other: "Other · אחר" };
+const EXPENSE_LABELS = { Travel: "Travel · נסיעות", Food: "Food · אוכל", Hotel: "Hotel · מלון", Other: "Other · אחר" };
+const DAY_LABELS = ["Sun · א׳", "Mon · ב׳", "Tue · ג׳", "Wed · ד׳", "Thu · ה׳", "Fri · ו׳", "Sat · ש׳"];
+const TABLE_HEADINGS = [
+  "Date · תאריך", "Day · יום", "Type · סוג", "Start · התחלה", "End · סיום", "Hours · שעות",
+  "Extra hours · שעות נוספות", "Pay · שכר", "Night · לינה", "Expenses · הוצאות", "Total · סה״כ", "Details · פירוט",
+];
+const TABLE_HEAD_ROWS = 6; // title, month, name, rates, blank, headings
+
+// A small header, one row per shift, then the totals. Plain values rather than formulas, so the sheet always
+// matches the app; money and hours stay numbers so Sheets can format and add them.
+function monthTableRows(monthDate, lines, totals, rates, s) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const rows = [
+    ["Shift report · דוח משמרות"],
+    ["Month · חודש", monthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })],
+    ["Name · שם", s.full_name || ""],
+    ["Rates · תעריפים", "Warehouse ₪" + rates.warehouse + "/h · Event ₪" + rates.event + " · Extra ₪" + rates.extra + "/h · Night ₪" + rates.night],
+    [],
+    TABLE_HEADINGS,
+  ];
+  lines.forEach((line) => {
+    const day = new Date(line.ds + "T00:00");
+    const [startText, endText] = line.missingTimes ? ["", ""] : timeRange(line.event).split("–");
+    const details = [];
+    if (line.type === OTHER && privateProps(line.event).note) details.push(privateProps(line.event).note);
+    expensesOf(line.event).forEach((x) => details.push((EXPENSE_LABELS[x.type] || x.type) + " ₪" + x.amount));
+    if (line.missingTimes) details.push("No times yet · אין שעות");
+    rows.push([
+      pad(day.getDate()) + "/" + pad(day.getMonth() + 1) + "/" + day.getFullYear(),
+      DAY_LABELS[day.getDay()],
+      TYPE_LABELS[line.type],
+      startText,
+      endText,
+      line.hours === null ? "" : round2(line.hours),
+      line.extraHours ? round2(line.extraHours) : "",
+      line.pay,
+      line.night || "",
+      line.expenses || "",
+      line.total,
+      details.join(", "),
+    ]);
+  });
+  // Summary amounts sit in the Total column
+  const summary = (label, detail, amount) => [label, detail, "", "", "", "", "", "", "", "", amount];
+  rows.push([], ["Summary · סיכום"]);
+  if (totals.warehouse.count) rows.push(summary("Warehouse · מחסן", totals.warehouse.count + " shifts · " + round2(totals.warehouse.hours) + " h", totals.warehouse.pay));
+  if (totals.event.count) rows.push(summary("Event · אירוע", totals.event.count + " days · " + round2(totals.event.extraHours) + " extra h", totals.event.pay));
+  if (totals.nights.count) rows.push(summary("Nights · לינות", totals.nights.count + " nights", totals.nights.pay));
+  if (totals.other.count) rows.push(summary("Other · אחר", totals.other.count + " jobs", totals.other.pay));
+  if (totals.expenses) rows.push(summary("Expenses · הוצאות", "", totals.expenses));
+  rows.push(summary("Total to pay · סה״כ לתשלום", "", totals.total));
+  return rows;
+}
+
+// ---------- Writing the month's tab into the pay sheet ----------
+
+const TABLE_KEY = "shiftboard_table"; // hidden per-tab note of what the app last wrote, to spot hand edits
+const COLUMN_WIDTHS = [100, 90, 150, 70, 100, 70, 120, 100, 90, 100, 110, 300];
+let payData = { lines: [], totals: null }; // exactly what the Pay view shows, so the sheet gets the same
+
+const jsonGet = (url) => apiFetch(url).then((r) => r.json());
+const monthTabTitle = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + " " + d.toLocaleDateString("en-US", { month: "long" });
+
+// A fingerprint of a table's values; trailing empty cells and rows don't count (Sheets drops them)
+function tableHash(rows) {
+  const clean = rows.map((row) => {
+    const cells = row.map((v) => (v == null ? "" : v));
+    while (cells.length && cells[cells.length - 1] === "") cells.pop();
+    return cells;
+  });
+  while (clean.length && !clean[clean.length - 1].length) clean.pop();
+  const text = JSON.stringify(clean);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(16);
+}
+
+// Writes the Pay view's month into its own tab ("2026-09 September"). If the tab was changed by hand since the
+// app last wrote it, asks first. Resolves with the tab's id, or null when the user chose to keep their edits.
+function writeMonthTab() {
+  const title = monthTabTitle(payMonth);
+  const quoted = encodeURIComponent("'" + title + "'");
+  const rows = monthTableRows(payMonth, payData.lines, payData.totals || monthTotals([]), ratesFrom(settings), settings);
+  let tabId;
+  let note = null;
+  return ensureSheet()
+    .then((id) => jsonGet(SHEETS_API + "/" + id + "?fields=sheets(properties(sheetId,title),developerMetadata(metadataId,metadataKey,metadataValue))"))
+    .then((meta) => {
+      const tab = (meta.sheets || []).find((s) => s.properties.title === title);
+      if (!tab) {
+        return jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [{ addSheet: { properties: { title } } }] }).then((res) => {
+          tabId = res.replies[0].addSheet.properties.sheetId;
+          return true;
+        });
+      }
+      tabId = tab.properties.sheetId;
+      note = (tab.developerMetadata || []).find((m) => m.metadataKey === TABLE_KEY) || null;
+      return jsonGet(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1:L500?valueRenderOption=UNFORMATTED_VALUE").then(
+        (data) =>
+          (note && note.metadataValue === tableHash(data.values || [])) ||
+          confirm("The " + title.slice(8) + " tab in your pay sheet was changed by hand. Replace it with the app's version?")
+      );
+    })
+    .then((go) => {
+      if (!go) return null;
+      const hash = tableHash(rows);
+      const noteRequest = note
+        ? { updateDeveloperMetadata: { dataFilters: [{ developerMetadataLookup: { metadataId: note.metadataId } }], developerMetadata: { metadataValue: hash }, fields: "metadataValue" } }
+        : { createDeveloperMetadata: { developerMetadata: { metadataKey: TABLE_KEY, metadataValue: hash, location: { sheetId: tabId }, visibility: "DOCUMENT" } } };
+      return jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + ":clear", "POST", {})
+        .then(() => jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1?valueInputOption=RAW", "PUT", { values: rows }))
+        .then(() => jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: tableFormatRequests(tabId, rows.length).concat(noteRequest) }))
+        .then(() => tabId);
+    });
+}
+
+function tableFormatRequests(tabId, rowCount) {
+  const range = (r1, r2, c1, c2) => ({ sheetId: tabId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 });
+  const format = (rng, userEnteredFormat, fields) => ({ repeatCell: { range: rng, cell: { userEnteredFormat }, fields: "userEnteredFormat(" + fields + ")" } });
+  const head = TABLE_HEAD_ROWS;
+  return [
+    { repeatCell: { range: range(0, 500, 0, 12), cell: {}, fields: "userEnteredFormat" } }, // drop formats a longer table left behind
+    format(range(0, 1, 0, 1), { textFormat: { bold: true, fontSize: 14 } }, "textFormat"),
+    format(range(1, 4, 0, 1), { textFormat: { bold: true } }, "textFormat"),
+    format(range(head - 1, head, 0, 12), { textFormat: { bold: true }, backgroundColor: { red: 0.92, green: 0.93, blue: 0.95 } }, "textFormat,backgroundColor"),
+    format(range(head, rowCount, 5, 7), { numberFormat: { type: "NUMBER", pattern: "0.00" } }, "numberFormat"),
+    format(range(head, rowCount, 7, 11), { numberFormat: { type: "CURRENCY", pattern: "₪#,##0.00" } }, "numberFormat"),
+    format(range(rowCount - 1, rowCount, 0, 12), { textFormat: { bold: true } }, "textFormat"),
+    { updateSheetProperties: { properties: { sheetId: tabId, gridProperties: { frozenRowCount: head } }, fields: "gridProperties.frozenRowCount" } },
+  ].concat(
+    COLUMN_WIDTHS.map((px, i) => ({
+      updateDimensionProperties: { range: { sheetId: tabId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: "pixelSize" },
+    }))
+  );
+}
+
+function updateSheet() {
+  const btn = el("writeSheetBtn");
+  btn.disabled = true;
+  btn.textContent = "Updating…";
+  writeMonthTab()
+    .then((tabId) => {
+      if (tabId === null) return;
+      const link = el("openSheetLink");
+      link.href = "https://docs.google.com/spreadsheets/d/" + sheetId + "/edit#gid=" + tabId;
+      link.hidden = false;
+      showToast(monthTabTitle(payMonth).slice(8) + " is up to date in your pay sheet");
+    })
+    .catch((err) => showApiError("Couldn't update your pay sheet", err))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = "Update my sheet";
+    });
+}
+
+// ---------- Pay view ----------
+
+const SETTING_KEYS = ["full_name", "company_email", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+let payMonth = null; // the 1st of the month shown on the Pay view
+let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
+
+function showView(view) {
+  const pay = view === "pay";
+  el("tabShifts").setAttribute("aria-pressed", String(!pay));
+  el("tabPay").setAttribute("aria-pressed", String(pay));
+  el("workspace").hidden = pay;
+  el("saveBar").hidden = pay;
+  el("payView").hidden = !pay;
+  document.body.classList.toggle("is-pay", pay);
+  if (pay) openPayView();
+}
+
+function openPayView() {
+  const connected = hasDrive();
+  el("driveConnect").hidden = connected;
+  el("payContent").hidden = !connected;
+  if (!connected) return;
+  if (!payMonth) {
+    const now = new Date();
+    payMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  el("payStatus").textContent = "Opening your pay sheet…";
+  (settings ? Promise.resolve(settings) : loadSettings())
+    .then((s) => {
+      fillSettingsForm(s);
+      renderPayMonth();
+    })
+    .catch((err) => {
+      el("payStatus").textContent = "";
+      showApiError("Couldn't open your pay sheet", err);
+    });
+}
+
+function fillSettingsForm(s) {
+  const f = el("settingsForm").elements;
+  SETTING_KEYS.forEach((key) => (f[key].value = s[key] || ""));
+  const r = ratesFrom(s);
+  el("settingsBox").open = !(s.full_name && r.warehouse && r.event); // stays open until the basics are in
+}
+
+function submitSettings(e) {
+  e.preventDefault();
+  const form = el("settingsForm");
+  const values = {};
+  SETTING_KEYS.forEach((key) => (values[key] = form.elements[key].value.trim()));
+  const error = form.querySelector(".form-error");
+  const fail = (msg) => {
+    error.textContent = msg;
+    error.hidden = false;
+  };
+  if (!values.full_name) return fail("Enter your full name as the company knows it.");
+  if (values.company_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.company_email)) return fail("That email address doesn't look right.");
+  error.hidden = true;
+  const btn = form.querySelector('[type="submit"]');
+  btn.disabled = true;
+  saveSettings(values)
+    .then(() => {
+      showToast("Saved to your pay sheet");
+      el("settingsBox").open = false;
+      renderPayMonth();
+    })
+    .catch((err) => showApiError("Couldn't save your details", err))
+    .finally(() => (btn.disabled = false));
+}
+
+function changePayMonth(delta) {
+  payMonth = new Date(payMonth.getFullYear(), payMonth.getMonth() + delta, 1);
+  renderPayMonth();
+}
+
+let payLoadSeq = 0; // a slow response for a month the user already moved away from is ignored
+
+function renderPayMonth() {
+  if (!payMonth || !settings) return;
+  const seq = ++payLoadSeq;
+  const year = payMonth.getFullYear();
+  const month = payMonth.getMonth();
+  el("monthTitle").textContent = payMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  el("payStatus").textContent = "Loading this month's shifts…";
+  el("writeSheetBtn").disabled = true; // until this month's shifts are in, so the sheet can't get another month's
+  el("openSheetLink").hidden = true;
+  // Up to a day into next month, so a shift starting late on the last day is included
+  fetchEvents(new Date(year, month, 1), new Date(year, month + 1, 2))
+    .then((items) => {
+      if (seq !== payLoadSeq) return;
+      const rates = ratesFrom(settings);
+      const lines = monthLines(items, year, month, rates);
+      const totals = monthTotals(lines);
+      payData = { lines, totals };
+      el("writeSheetBtn").disabled = false;
+      renderPayStatus(lines, totals, rates);
+      renderPayTotals(lines.length ? totals : null);
+      renderPayLines(lines);
+    })
+    .catch((err) => showApiError("Couldn't load this month", err));
+}
+
+function renderPayStatus(lines, totals, rates) {
+  const status = el("payStatus");
+  status.classList.toggle("needs-times", totals.missingTimes > 0);
+  if (!rates.warehouse && !rates.event) status.textContent = "Add your rates below to see your pay.";
+  else if (!lines.length) status.textContent = "No shifts this month.";
+  else if (totals.missingTimes === 1) status.textContent = "1 shift has no times yet, so this total isn't final.";
+  else if (totals.missingTimes) status.textContent = totals.missingTimes + " shifts have no times yet, so this total isn't final.";
+  else status.textContent = "Every shift has its times.";
+}
+
+function renderPayTotals(totals) {
+  const box = el("payTotals");
+  box.innerHTML = "";
+  if (!totals) return;
+  const money = (n) => moneyFormat.format(n);
+  const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+  const rows = [
+    ["Warehouse", totals.warehouse.count, plural(totals.warehouse.count, "shift", "shifts") + " · " + formatHours(totals.warehouse.hours) + " · " + money(totals.warehouse.pay)],
+    ["Event", totals.event.count, plural(totals.event.count, "day", "days") + (totals.event.extraHours ? " · " + formatHours(totals.event.extraHours) + " extra" : "") + " · " + money(totals.event.pay)],
+    ["Nights", totals.nights.count, plural(totals.nights.count, "night", "nights") + " · " + money(totals.nights.pay)],
+    ["Other", totals.other.count, plural(totals.other.count, "job", "jobs") + " · " + money(totals.other.pay)],
+    ["Expenses", totals.expenses, money(totals.expenses)],
+  ];
+  box.innerHTML =
+    '<p class="total-line"><span>Total to pay</span><strong>' + money(totals.total) + "</strong></p>" +
+    '<dl class="total-breakdown">' +
+    rows.filter((row) => row[1]).map((row) => "<div><dt>" + row[0] + "</dt><dd>" + row[2] + "</dd></div>").join("") +
+    "</dl>";
+}
+
+function renderPayLines(lines) {
+  const list = el("payLines");
+  list.innerHTML = "";
+  lines.forEach((line) => {
+    const item = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pay-line type-" + line.type.toLowerCase();
+    const parts = [
+      ["pay-type", line.type],
+      ["pay-when", lineWhen(line)],
+      ["pay-detail" + (line.missingTimes ? " needs-times" : ""), lineDetail(line)],
+      ["pay-amount", line.missingTimes && line.type !== "Event" ? "–" : moneyFormat.format(line.total)],
+    ];
+    parts.forEach(([className, text]) => {
+      const span = document.createElement("span");
+      span.className = className;
+      span.textContent = text; // descriptions are the user's own text, so never innerHTML
+      btn.appendChild(span);
+    });
+    btn.addEventListener("click", () => {
+      const panel = openPanel(new Date(line.ds + "T00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+      panel.appendChild(shiftForm(line.ds, line.type, line.event));
+      panel.showModal();
+    });
+    item.appendChild(btn);
+    list.appendChild(item);
+  });
+}
+
+function lineWhen(line) {
+  const day = new Date(line.ds + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return line.missingTimes ? day : day + " · " + timeRange(line.event);
+}
+
+function lineDetail(line) {
+  if (line.missingTimes) return "No times yet";
+  const parts = [formatHours(line.hours)];
+  if (line.extraHours) parts.push(formatHours(line.extraHours) + " extra");
+  if (line.night) parts.push("night " + moneyFormat.format(line.night));
+  if (line.expenses) parts.push("expenses " + moneyFormat.format(line.expenses));
+  const note = privateProps(line.event).note;
+  if (line.type === OTHER && note) parts.push(note);
+  return parts.join(" · ");
 }
 
 // ---------- Past shifts still missing their times (this month and last) ----------
