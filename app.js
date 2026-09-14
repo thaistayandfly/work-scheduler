@@ -4,6 +4,7 @@ const SCOPES = CALENDAR_SCOPE + " email";
 const APP_TAG = "shiftboard";
 const WORK_TYPES = ["Event", "Warehouse"];
 const MIN_RESTORE_MS = 5 * 60 * 1000; // skip restoring a saved token that's about to expire
+const WEEKS_PER_PAGE = 4; // weeks on the board at first, and how many "Show 4 more weeks" adds
 
 let tokenClient = null;
 let accessToken = null;
@@ -12,13 +13,19 @@ let tokenExpiresAt = 0;
 let calendars = [];
 let selectedCalendarId = localStorage.getItem("sb_calendarId") || "primary";
 
-let currentWeekStart = getMonday(new Date());
+// Mondays of the weeks on the board, earliest first
+let weeks = [];
 // daysState[dateStr][type] = { active, originalActive, eventIds }
-//   originalActive/eventIds: what the calendar had when the week loaded; active: what's selected now
+//   originalActive/eventIds: what the calendar had when that week loaded; active: what's selected now
 let daysState = {};
-let loadSeq = 0; // lets a slow events response for a previous week/calendar be ignored
+// Board elements, so one day or week can be updated without re-rendering the rest
+let dayButtons = {}; // dateStr -> { Event: <button>, Warehouse: <button> }
+let weekEls = {}; // Monday's dateStr -> { section, error, loaded, failed }
+let boardSeq = 0; // bumped whenever the board is rebuilt, so responses meant for the old one are ignored
+let saving = false;
 
 const el = (id) => document.getElementById(id);
+const rangeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 // ---------- Auth ----------
 
@@ -30,16 +37,10 @@ window.addEventListener("load", () => {
       callback: onTokenReceived,
     });
   });
-  el("signInBtn").addEventListener("click", () => {
-    if (!tokenClient) return; // Google's script hasn't loaded yet
-    // prompt "" only shows the consent screen when it's actually needed (e.g. first sign-in)
-    const opts = { prompt: "" };
-    const email = localStorage.getItem("sb_email");
-    if (email) opts.login_hint = email;
-    tokenClient.requestAccessToken(opts);
-  });
-  el("prevWeek").addEventListener("click", () => changeWeek(-7));
-  el("nextWeek").addEventListener("click", () => changeWeek(7));
+  el("signInBtn").addEventListener("click", signIn);
+  el("signOutBtn").addEventListener("click", signOut);
+  el("earlierBtn").addEventListener("click", () => addWeeks(-1));
+  el("moreWeeksBtn").addEventListener("click", () => addWeeks(WEEKS_PER_PAGE));
   el("newCalendarBtn").addEventListener("click", createNewCalendar);
   el("calendarSelect").addEventListener("change", (e) => {
     if (!confirmDiscard()) {
@@ -48,9 +49,10 @@ window.addEventListener("load", () => {
     }
     selectedCalendarId = e.target.value;
     localStorage.setItem("sb_calendarId", selectedCalendarId);
-    renderWeek();
+    resetBoard();
   });
   el("saveBtn").addEventListener("click", saveChanges);
+  el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) {
       e.preventDefault();
@@ -64,6 +66,27 @@ window.addEventListener("load", () => {
 function waitForGoogle(cb) {
   if (window.google && google.accounts && google.accounts.oauth2) cb();
   else setTimeout(() => waitForGoogle(cb), 100);
+}
+
+function signIn() {
+  if (!tokenClient) return; // Google's script hasn't loaded yet
+  // prompt "" only shows the consent screen when it's actually needed (e.g. first sign-in)
+  const opts = { prompt: "" };
+  const email = localStorage.getItem("sb_email");
+  if (email) opts.login_hint = email;
+  tokenClient.requestAccessToken(opts);
+}
+
+// Forgets this browser's session and whose it was, so a coworker can sign in with their own account
+function signOut() {
+  if (!confirmDiscard()) return;
+  localStorage.removeItem("sb_email");
+  localStorage.removeItem("sb_calendarId");
+  selectedCalendarId = "primary";
+  calendars = [];
+  el("accountEmail").textContent = "";
+  clearBoard();
+  resetToSignedOut();
 }
 
 // A browser-only app can't renew a token without a popup, so keep the current one for its
@@ -97,18 +120,19 @@ function onTokenReceived(resp) {
 function startSession(token, expiresAt) {
   accessToken = token;
   tokenExpiresAt = expiresAt;
-
-  el("signInBtn").textContent = "Signed in";
-  el("signInBtn").disabled = true;
-  el("controls").hidden = false;
-  el("weekGrid").hidden = false;
-  el("saveBar").hidden = false;
-  el("emptyState").hidden = true;
-
+  showSignedIn(true);
   fetchUserEmail();
   // Signing back in after the token expired mid-edit: refresh what's saved but keep the unsaved toggles
-  if (isDirty()) loadEventsForWeek();
+  if (isDirty()) loadWeeks(weeks);
   else loadCalendars();
+}
+
+function showSignedIn(signedIn) {
+  document.body.classList.toggle("is-signed-in", signedIn);
+  el("welcome").hidden = signedIn;
+  el("workspace").hidden = !signedIn;
+  el("saveBar").hidden = !signedIn;
+  el("account").hidden = !signedIn;
 }
 
 // Only used to display the email and pre-fill the next sign-in, so it uses plain fetch():
@@ -119,8 +143,8 @@ function fetchUserEmail() {
     .then((info) => {
       if (info.email) {
         localStorage.setItem("sb_email", info.email);
-        el("userEmail").textContent = info.email;
-        el("userEmail").hidden = false;
+        el("accountEmail").textContent = info.email;
+        el("accountEmail").title = info.email;
       }
     })
     .catch(() => {});
@@ -164,12 +188,7 @@ function resetToSignedOut() {
   accessToken = null;
   tokenExpiresAt = 0;
   localStorage.removeItem("sb_token");
-  el("signInBtn").textContent = "Sign in with Google";
-  el("signInBtn").disabled = false;
-  el("controls").hidden = true;
-  el("weekGrid").hidden = true;
-  el("saveBar").hidden = true;
-  el("emptyState").hidden = false;
+  showSignedIn(false);
 }
 
 // ---------- Calendars ----------
@@ -196,9 +215,11 @@ function loadCalendars() {
       }
       localStorage.setItem("sb_calendarId", selectedCalendarId);
       select.value = selectedCalendarId;
-      renderWeek();
+      el("calendarEmpty").hidden = calendars.length > 0;
+      if (calendars.length) resetBoard();
+      else clearBoard();
     })
-    .catch((err) => showApiError("Couldn't load calendars", err));
+    .catch((err) => showApiError("Couldn't load your calendars", err));
 }
 
 function createNewCalendar() {
@@ -217,10 +238,10 @@ function createNewCalendar() {
       showToast('Calendar "' + name + '" created');
       loadCalendars();
     })
-    .catch((err) => showApiError("Couldn't create calendar", err));
+    .catch((err) => showApiError("Couldn't create the calendar", err));
 }
 
-// ---------- Week rendering ----------
+// ---------- Dates ----------
 
 function getMonday(date) {
   const d = new Date(date);
@@ -231,133 +252,257 @@ function getMonday(date) {
   return d;
 }
 
-function changeWeek(deltaDays) {
-  if (!confirmDiscard()) return;
-  currentWeekStart.setDate(currentWeekStart.getDate() + deltaDays);
-  renderWeek();
-}
-
 // Local calendar date. toISOString() converts to UTC first, which in UTC+ timezones
 // turns local midnight into the previous day.
 function dateStr(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
-function renderWeek() {
-  const grid = el("weekGrid");
-  grid.innerHTML = "";
-  daysState = {};
-
-  const days = [];
+function weekDates(monday) {
+  const dates = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(currentWeekStart);
+    const d = new Date(monday);
     d.setDate(d.getDate() + i);
-    days.push(d);
+    dates.push(dateStr(d));
   }
-
-  const fmt = { month: "short", day: "numeric" };
-  el("weekLabel").textContent =
-    days[0].toLocaleDateString(undefined, fmt) +
-    " – " +
-    days[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-
-  const today = dateStr(new Date());
-
-  days.forEach((d) => {
-    const ds = dateStr(d);
-    daysState[ds] = {
-      Event: { active: false, originalActive: false, eventIds: [] },
-      Warehouse: { active: false, originalActive: false, eventIds: [] },
-    };
-
-    const card = document.createElement("div");
-    card.className = "day-card" + (ds === today ? " is-today" : "");
-    card.dataset.date = ds;
-
-    const label = document.createElement("div");
-    label.className = "day-label";
-    label.innerHTML =
-      '<div class="day-name">' +
-      d.toLocaleDateString(undefined, { weekday: "short" }) +
-      '</div><div class="day-num">' +
-      d.getDate() +
-      "</div>";
-    card.appendChild(label);
-
-    const group = document.createElement("div");
-    group.className = "pill-group";
-    WORK_TYPES.forEach((type) => {
-      const pill = document.createElement("button");
-      pill.className = "pill";
-      pill.type = "button";
-      pill.dataset.type = type;
-      pill.textContent = type;
-      pill.addEventListener("click", () => togglePill(ds, type, pill, card));
-      group.appendChild(pill);
-    });
-    card.appendChild(group);
-
-    grid.appendChild(card);
-  });
-
-  if (accessToken) loadEventsForWeek();
+  return dates;
 }
 
-function togglePill(ds, type, pillEl, cardEl) {
-  const entry = daysState[ds][type];
-  entry.active = !entry.active;
-  pillEl.classList.toggle("is-active", entry.active);
-  const anyActive = WORK_TYPES.some((t) => daysState[ds][t].active);
-  cardEl.classList.toggle("has-selection", anyActive);
+// "This week" / "Next week" / "Last week" for nearby weeks; the rest go by their dates alone
+function weekName(monday) {
+  const diff = Math.round((monday - getMonday(new Date())) / (7 * 24 * 60 * 60 * 1000));
+  return { "-1": "Last week", 0: "This week", 1: "Next week" }[diff] || "";
+}
+
+function formatRange(from, to) {
+  if (rangeFormat.formatRange) return rangeFormat.formatRange(from, to);
+  return rangeFormat.format(from) + " – " + rangeFormat.format(to);
+}
+
+// ---------- Board ----------
+
+function clearBoard() {
+  boardSeq++;
+  weeks = [];
+  daysState = {};
+  dayButtons = {};
+  weekEls = {};
+  el("board").innerHTML = "";
   updateSaveState();
 }
 
-function loadEventsForWeek() {
-  if (!accessToken) return;
-  const seq = ++loadSeq;
-  const start = new Date(currentWeekStart);
-  start.setDate(start.getDate() - 1); // pad a day either side to dodge timezone edge effects on all-day events
-  const end = new Date(currentWeekStart);
-  end.setDate(end.getDate() + 8);
+// Starts the board over at this week for the selected calendar, dropping unsaved toggles
+function resetBoard() {
+  clearBoard();
+  addWeeks(WEEKS_PER_PAGE);
+}
 
+// Adds weeks after the last one (count > 0) or before the first (count < 0), then loads their shifts
+function addWeeks(count) {
+  const board = el("board");
+  const added = [];
+  for (let i = 0; i < Math.abs(count); i++) {
+    let monday;
+    if (!weeks.length) {
+      monday = getMonday(new Date());
+    } else {
+      monday = new Date(count > 0 ? weeks[weeks.length - 1] : weeks[0]);
+      monday.setDate(monday.getDate() + (count > 0 ? 7 : -7));
+    }
+    const section = renderWeek(monday);
+    if (count > 0) {
+      weeks.push(monday);
+      board.appendChild(section);
+    } else {
+      weeks.unshift(monday);
+      board.insertBefore(section, board.firstChild);
+    }
+    added.push(monday);
+  }
+  loadWeeks(added);
+}
+
+function renderWeek(monday) {
+  const key = dateStr(monday);
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+
+  const section = document.createElement("section");
+  section.className = "week";
+  section.setAttribute("aria-labelledby", "week-" + key);
+
+  const title = document.createElement("h2");
+  title.className = "week-title";
+  title.id = "week-" + key;
+  const name = weekName(monday);
+  const range = formatRange(monday, sunday);
+  title.innerHTML = name ? name + ' <span class="week-dates">' + range + "</span>" : range;
+  section.appendChild(title);
+
+  const error = document.createElement("p");
+  error.className = "week-error";
+  error.hidden = true;
+  error.textContent = "Couldn't load this week.";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "btn-text";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => loadWeeks([monday]));
+  error.appendChild(retry);
+  section.appendChild(error);
+
+  const list = document.createElement("ol");
+  list.className = "days";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    list.appendChild(renderDay(d));
+  }
+  section.appendChild(list);
+
+  weekEls[key] = { section, error, loaded: false, failed: false };
+  return section;
+}
+
+function renderDay(d) {
+  const ds = dateStr(d);
+  const today = dateStr(new Date());
+  daysState[ds] = {};
+  WORK_TYPES.forEach((type) => (daysState[ds][type] = { active: false, originalActive: false, eventIds: [] }));
+
+  const row = document.createElement("li");
+  row.className = "day" + (ds === today ? " is-today" : ds < today ? " is-past" : "");
+  row.dataset.date = ds;
+
+  const label = document.createElement("div");
+  label.className = "day-label";
+  label.innerHTML =
+    '<span class="dow">' +
+    d.toLocaleDateString(undefined, { weekday: "short" }) +
+    '</span><span class="dnum">' +
+    d.getDate() +
+    "</span>" +
+    (ds === today ? '<span class="sr-only">Today</span>' : "");
+  row.appendChild(label);
+
+  const slots = document.createElement("div");
+  slots.className = "slots";
+  const longDate = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  dayButtons[ds] = {};
+  WORK_TYPES.forEach((type) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tape type-" + type.toLowerCase();
+    btn.dataset.type = type;
+    btn.disabled = true; // until the week's shifts have loaded, so a saved one can't be added twice
+    btn.setAttribute("aria-label", type + ", " + longDate);
+    btn.innerHTML = '<span class="strip"></span><span class="tape-label">' + type + "</span>";
+    btn.addEventListener("click", () => toggleShift(ds, type));
+    slots.appendChild(btn);
+    dayButtons[ds][type] = btn;
+  });
+  row.appendChild(slots);
+
+  syncDay(ds);
+  return row;
+}
+
+function syncDay(ds) {
+  WORK_TYPES.forEach((type) => {
+    const entry = daysState[ds][type];
+    const btn = dayButtons[ds][type];
+    btn.classList.toggle("is-on", entry.active);
+    btn.classList.toggle("is-changed", entry.active !== entry.originalActive);
+    btn.setAttribute("aria-pressed", String(entry.active));
+  });
+}
+
+function toggleShift(ds, type) {
+  const entry = daysState[ds][type];
+  entry.active = !entry.active;
+  syncDay(ds);
+  updateSaveState();
+}
+
+// Reads the calendar for the given weeks and shows what's saved, keeping toggles not saved yet
+function loadWeeks(list) {
+  if (!accessToken || !list.length) return;
+  const seq = boardSeq;
+  const start = new Date(Math.min(...list));
+  start.setDate(start.getDate() - 1); // pad a day either side to dodge timezone edge effects on all-day events
+  const end = new Date(Math.max(...list));
+  end.setDate(end.getDate() + 8);
+  setWeeksBusy(list, true);
+
+  fetchEvents(start, end)
+    .then((items) => {
+      if (seq !== boardSeq) return; // the board was rebuilt (e.g. another calendar) in the meantime
+      const saved = {}; // "2026-09-14|Event" -> [eventId, ...]
+      items.forEach((item) => {
+        const ds = eventDate(item);
+        const type = workTypeOf(item);
+        if (ds && type) (saved[ds + "|" + type] = saved[ds + "|" + type] || []).push(item.id);
+      });
+      // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
+      // keeping toggles the user hasn't saved yet — including ones that just failed to save
+      list.forEach((monday) => {
+        weekDates(monday).forEach((ds) => {
+          WORK_TYPES.forEach((type) => {
+            const entry = daysState[ds][type];
+            const unsaved = entry.active !== entry.originalActive;
+            entry.eventIds = saved[ds + "|" + type] || [];
+            entry.originalActive = entry.eventIds.length > 0;
+            if (!unsaved) entry.active = entry.originalActive;
+          });
+          syncDay(ds);
+        });
+      });
+      setWeeksBusy(list, false);
+    })
+    .catch((err) => {
+      if (seq !== boardSeq) return;
+      setWeeksBusy(list, false, true);
+      showApiError("Couldn't load your shifts", err);
+    });
+}
+
+function setWeeksBusy(list, busy, failed = false) {
+  list.forEach((monday) => {
+    const week = weekEls[dateStr(monday)];
+    if (!week) return;
+    if (!busy && !failed) week.loaded = true;
+    week.failed = failed;
+    week.section.setAttribute("aria-busy", String(busy));
+    week.error.hidden = !failed || week.loaded;
+    // Taps wait for a week's first load; later reloads keep unsaved toggles, so they stay tappable
+    weekDates(monday).forEach((ds) => WORK_TYPES.forEach((type) => (dayButtons[ds][type].disabled = !week.loaded)));
+    if (!busy) {
+      week.section.dataset.settling = "";
+      setTimeout(() => delete week.section.dataset.settling, 80);
+    }
+  });
+  updateSaveState();
+}
+
+function fetchEvents(start, end, pageToken, items = []) {
   const params = new URLSearchParams({
     timeMin: start.toISOString(),
     timeMax: end.toISOString(),
     singleEvents: "true",
+    maxResults: "250",
   });
-
+  if (pageToken) params.set("pageToken", pageToken);
   const url =
     "https://www.googleapis.com/calendar/v3/calendars/" +
     encodeURIComponent(selectedCalendarId) +
     "/events?" +
     params.toString();
-
-  apiFetch(url)
+  return apiFetch(url)
     .then((r) => r.json())
     .then((data) => {
-      if (seq !== loadSeq) return; // a newer week/calendar load has started since
-      const saved = {}; // "2026-09-14|Event" -> [eventId, ...]
-      (data.items || []).forEach((item) => {
-        const ds = eventDate(item);
-        const type = workTypeOf(item);
-        if (ds && type) (saved[ds + "|" + type] = saved[ds + "|" + type] || []).push(item.id);
-      });
-      console.log("ShiftBoard: work events this week", saved);
-      // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
-      // keeping toggles the user hasn't saved yet — including ones that just failed to save
-      Object.entries(daysState).forEach(([ds, day]) => {
-        WORK_TYPES.forEach((type) => {
-          const entry = day[type];
-          const unsaved = entry.active !== entry.originalActive;
-          entry.eventIds = saved[ds + "|" + type] || [];
-          entry.originalActive = entry.eventIds.length > 0;
-          if (!unsaved) entry.active = entry.originalActive;
-        });
-      });
-      syncPillsToState();
-      updateSaveState();
-    })
-    .catch((err) => showApiError("Couldn't load events", err));
+      items.push(...(data.items || []));
+      return data.nextPageToken ? fetchEvents(start, end, data.nextPageToken, items) : items;
+    });
 }
 
 // Events this app creates carry a hidden tag. Others — from the first version of the app, or added
@@ -376,20 +521,6 @@ function eventDate(item) {
   return item.start.dateTime ? dateStr(new Date(item.start.dateTime)) : null;
 }
 
-function syncPillsToState() {
-  document.querySelectorAll(".day-card").forEach((card) => {
-    const ds = card.dataset.date;
-    let any = false;
-    card.querySelectorAll(".pill").forEach((pill) => {
-      const type = pill.dataset.type;
-      const active = daysState[ds][type].active;
-      pill.classList.toggle("is-active", active);
-      if (active) any = true;
-    });
-    card.classList.toggle("has-selection", any);
-  });
-}
-
 // ---------- Saving ----------
 
 function isDirty() {
@@ -399,18 +530,34 @@ function isDirty() {
 }
 
 function confirmDiscard() {
-  return !isDirty() || confirm("You have unsaved changes for this week. Discard them?");
+  return !isDirty() || confirm("You have shifts that aren't saved yet. Discard them?");
 }
 
 function updateSaveState() {
-  const dirty = isDirty();
-  el("saveBtn").disabled = !dirty;
-  el("statusText").textContent = dirty ? "Unsaved changes" : "No changes yet";
+  let adds = 0;
+  let removes = 0;
+  Object.values(daysState).forEach((day) => {
+    WORK_TYPES.forEach((type) => {
+      if (day[type].active && !day[type].originalActive) adds++;
+      else if (!day[type].active && day[type].originalActive) removes++;
+    });
+  });
+  const dirty = adds + removes > 0;
+  const loading = Object.values(weekEls).some((week) => !week.loaded && !week.failed);
+  const status = el("statusText");
+  status.classList.toggle("is-quiet", !dirty && !saving);
+  if (saving) status.textContent = "Saving to Google Calendar…";
+  else if (dirty) status.textContent = [adds && adds + " to add", removes && removes + " to remove"].filter(Boolean).join(" · ");
+  else if (loading) status.textContent = "Loading your shifts…";
+  else status.textContent = "No unsaved changes";
+  el("saveBtn").disabled = !dirty || saving;
+  el("saveBtn").textContent = saving ? "Saving…" : "Save to Calendar";
 }
 
-// Compares what's selected now with what the calendar had when the week loaded:
+// Compares what's selected now with what the calendar had when each week loaded:
 // selected but not in the calendar -> create; in the calendar but unselected -> delete.
 function saveChanges() {
+  if (saving) return;
   const tasks = [];
 
   Object.entries(daysState).forEach(([ds, types]) => {
@@ -427,18 +574,20 @@ function saveChanges() {
 
   if (tasks.length === 0) return;
 
-  el("saveBtn").disabled = true;
-  el("statusText").textContent = "Saving…";
+  saving = true;
+  updateSaveState();
 
   Promise.allSettled(tasks).then((results) => {
+    saving = false;
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length) {
-      showApiError(failures.length + " change(s) failed to save", failures[0].reason);
+      const prefix = failures.length === 1 ? "1 change couldn't be saved" : failures.length + " changes couldn't be saved";
+      showApiError(prefix, failures[0].reason);
     } else {
-      showToast("Saved");
+      showToast("Saved to Google Calendar");
     }
     updateSaveState();
-    loadEventsForWeek();
+    loadWeeks(weeks);
   });
 }
 
@@ -479,8 +628,8 @@ let toastTimer = null;
 function showToast(msg, isError) {
   const t = el("toast");
   t.textContent = msg;
-  t.className = "toast" + (isError ? " error" : "");
+  t.className = "toast" + (isError ? " is-error" : "");
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 3000);
+  toastTimer = setTimeout(() => (t.hidden = true), isError ? 6000 : 3000);
 }

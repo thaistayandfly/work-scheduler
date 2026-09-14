@@ -27,10 +27,10 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 
 - Sign-in uses Google Identity Services in the browser — no server. The access token (good for about an hour) is kept in `localStorage`, so reloading the page keeps you signed in. When it expires, one click on **Sign in with Google** gets a new one without the consent screen, and unsaved toggles are kept.
 - Pick or create a calendar from the dropdown. Only calendars you can edit are listed; it defaults to your main calendar.
-- Toggle **Event** / **Warehouse** per day (both can be on at once, not two of the same type).
+- The board shows this week and the next three; **Show 4 more weeks** and **Show the week before** add more. Tap **Event** / **Warehouse** on any day (both can be on at once) and tap again to remove it.
 - A day shows **Event** / **Warehouse** as selected when the calendar has an event with that title on it (`Event`, `Warehouse`, `Work: Event` or `Work: Warehouse`, any case) — including events from the first version of the app or added by hand. Other events are ignored.
-- **Save changes** compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included).
-- Switching weeks re-reads saved days from Calendar directly (no local database). Save before switching — the app asks before discarding unsaved toggles.
+- **Save to Calendar** saves every week at once. It compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included). Anything that fails stays marked so you can save again.
+- **Sign out** forgets this browser's session so a coworker can sign in with their own Google account. Each coworker has to be added under **Test users** first (step 2).
 
 ## Known limits
 

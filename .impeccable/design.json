@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-14",
+  "title": "Design System: ShiftBoard",
+  "extensions": {
+    "colorMeta": {
+      "gaffer-blue": {
+        "role": "primary",
+        "displayName": "Gaffer Blue",
+        "canonical": "oklch(0.53 0.155 257)",
+        "tonalRamp": ["oklch(0.15 0.05 257)", "oklch(0.26 0.09 257)", "oklch(0.37 0.13 257)", "oklch(0.48 0.155 257)", "oklch(0.59 0.15 257)", "oklch(0.7 0.12 257)", "oklch(0.82 0.08 257)", "oklch(0.95 0.03 257)"]
+      },
+      "gaffer-orange": {
+        "role": "primary",
+        "displayName": "Gaffer Orange",
+        "canonical": "oklch(0.76 0.155 58)",
+        "tonalRamp": ["oklch(0.15 0.04 58)", "oklch(0.26 0.08 58)", "oklch(0.37 0.12 58)", "oklch(0.48 0.15 58)", "oklch(0.59 0.16 58)", "oklch(0.7 0.155 58)", "oklch(0.82 0.1 58)", "oklch(0.95 0.04 58)"]
+      },
+      "masking-tape": {
+        "role": "secondary",
+        "displayName": "Masking Tape",
+        "canonical": "oklch(0.925 0.04 95)",
+        "tonalRamp": ["oklch(0.15 0.015 95)", "oklch(0.26 0.025 95)", "oklch(0.37 0.035 95)", "oklch(0.48 0.045 95)", "oklch(0.59 0.05 95)", "oklch(0.7 0.05 95)", "oklch(0.82 0.045 95)", "oklch(0.95 0.03 95)"]
+      },
+      "marker-ink": {
+        "role": "neutral",
+        "displayName": "Marker Ink",
+        "canonical": "oklch(0.235 0.025 258)",
+        "tonalRamp": ["oklch(0.15 0.02 258)", "oklch(0.26 0.025 258)", "oklch(0.37 0.025 258)", "oklch(0.48 0.022 258)", "oklch(0.59 0.02 258)", "oklch(0.7 0.015 258)", "oklch(0.82 0.01 258)", "oklch(0.95 0.006 258)"]
+      },
+      "whiteboard": { "role": "neutral", "displayName": "Whiteboard", "canonical": "oklch(0.962 0.006 250)" },
+      "road-case": { "role": "neutral", "displayName": "Road Case", "canonical": "oklch(0.19 0.018 258)" },
+      "alarm-red": {
+        "role": "error",
+        "displayName": "Alarm Red",
+        "canonical": "oklch(0.54 0.2 27)",
+        "tonalRamp": ["oklch(0.15 0.05 27)", "oklch(0.26 0.1 27)", "oklch(0.37 0.15 27)", "oklch(0.48 0.19 27)", "oklch(0.59 0.19 27)", "oklch(0.7 0.15 27)", "oklch(0.82 0.09 27)", "oklch(0.95 0.03 27)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The signed-out headline only." },
+      "headline": { "displayName": "Week title", "purpose": "Sticky week headers." },
+      "title": { "displayName": "Day numeral", "purpose": "Day-of-month in the date column, tabular figures." },
+      "label": { "displayName": "Tape label", "purpose": "Anything written on tape, and the primary button." },
+      "meta": { "displayName": "Meta", "purpose": "Day-of-week names and field labels." },
+      "body": { "displayName": "Body", "purpose": "Sentences, status text, the calendar picker." }
+    },
+    "shadows": [
+      { "name": "tape", "value": "drop-shadow(0 1px 1px oklch(0.25 0.03 258 / 0.4))", "purpose": "A strip of tape sitting on the board (filter on the strip wrapper so it follows the torn shape)." },
+      { "name": "save-bar", "value": "0 -10px 30px -16px oklch(0.2 0.03 258 / 0.35)", "purpose": "The fixed save bar floating over the scrolling board." },
+      { "name": "toast", "value": "0 14px 30px -12px oklch(0.2 0.03 258 / 0.5)", "purpose": "Transient messages above everything." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Tape pulling on (240ms), toasts arriving (200ms), presses (160ms)." },
+      { "name": "ease-in", "value": "cubic-bezier(0.5, 0, 0.75, 0)", "purpose": "Tape peeling off (150ms); exits are faster than entrances." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "max-width: 22.5rem" },
+      { "name": "wide", "value": "min-width: 60rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one committing action on a screen: Save to Calendar, Sign in with Google.",
+      "html": "<button class=\"ds-btn-primary\">Save to Calendar</button>",
+      "css": ".ds-btn-primary { min-height: 48px; padding: 0 24px; border: 0; border-radius: 8px; background: var(--ink, oklch(0.235 0.025 258)); color: var(--board, oklch(0.962 0.006 250)); font: 700 1.0625rem/1 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; } .ds-btn-primary:disabled { background: var(--rule, oklch(0.885 0.01 252)); color: var(--ink-2, oklch(0.47 0.022 258)); cursor: default; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Secondary actions: New calendar, Show 4 more weeks.",
+      "html": "<button class=\"ds-btn-quiet\">New calendar</button>",
+      "css": ".ds-btn-quiet { min-height: 44px; padding: 0 16px; border: 1.5px solid var(--rule, oklch(0.885 0.01 252)); border-radius: 8px; background: transparent; color: var(--ink, oklch(0.235 0.025 258)); font: 600 0.9375rem 'Barlow', system-ui, sans-serif; cursor: pointer; } .ds-btn-quiet:hover { border-color: var(--slot-line, oklch(0.64 0.022 255)); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; }"
+    },
+    {
+      "name": "Text Button",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "Low-weight actions: Sign out, Show the week before, Try again.",
+      "html": "<button class=\"ds-btn-text\">Show the week before</button>",
+      "css": ".ds-btn-text { min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--ink-2, oklch(0.47 0.022 258)); font: 600 0.9375rem 'Barlow', system-ui, sans-serif; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; white-space: nowrap; cursor: pointer; } .ds-btn-text:hover { color: var(--ink, oklch(0.235 0.025 258)); } .ds-btn-text:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; }"
+    },
+    {
+      "name": "Tape (Event, on)",
+      "kind": "custom",
+      "refersTo": "tape-event",
+      "description": "A day's Event shift: a strip of blue gaffer tape with torn ends.",
+      "html": "<button class=\"ds-tape ds-tape-event is-on\" aria-pressed=\"true\"><span class=\"ds-strip\"></span><span>Event</span></button>",
+      "css": ".ds-tape { --tape: var(--event, oklch(0.53 0.155 257)); --tape-ink: var(--event-ink, oklch(0.99 0.004 250)); --edge: var(--event-edge, oklch(0.44 0.14 257)); position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; min-width: 140px; min-height: 48px; padding: 0 8px; border: 0; background: none; color: var(--ink-2, oklch(0.47 0.022 258)); font: 700 1rem/1 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; } .ds-tape.is-on { color: var(--tape-ink); } .ds-strip { position: absolute; inset: 1px -3px; z-index: -1; filter: drop-shadow(0 1px 1px oklch(0.25 0.03 258 / 0.4)); } .ds-strip::before { content: ''; position: absolute; inset: 0; background: var(--tape); box-shadow: inset 0 1.5px 0 var(--edge), inset 0 -1.5px 0 var(--edge); -webkit-mask: var(--tape-mask, none); mask: var(--tape-mask, none); transform: rotate(-0.7deg) scaleX(0); transform-origin: right center; transition: transform 150ms cubic-bezier(0.5, 0, 0.75, 0); } .ds-tape.is-on .ds-strip::before { transform: rotate(-0.7deg) scaleX(1); transform-origin: left center; transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-tape:active { transform: scale(0.96); } .ds-tape:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; }"
+    },
+    {
+      "name": "Tape (Warehouse, on)",
+      "kind": "custom",
+      "refersTo": "tape-warehouse",
+      "description": "A day's Warehouse shift: orange gaffer tape with a darker edge that carries its 3:1 contrast.",
+      "html": "<button class=\"ds-tape ds-tape-warehouse is-on\" aria-pressed=\"true\"><span class=\"ds-strip\"></span><span>Warehouse</span></button>",
+      "css": ".ds-tape-warehouse { --tape: var(--warehouse, oklch(0.76 0.155 58)); --tape-ink: var(--warehouse-ink, oklch(0.24 0.035 50)); --edge: var(--warehouse-edge, oklch(0.6 0.15 50)); }"
+    },
+    {
+      "name": "Tape slot (empty)",
+      "kind": "custom",
+      "refersTo": "tape-empty",
+      "description": "Where tape can go: a dashed outline with a drawn plus.",
+      "html": "<button class=\"ds-slot\" aria-pressed=\"false\"><svg width=\"11\" height=\"11\" viewBox=\"0 0 12 12\" aria-hidden=\"true\"><path d=\"M6 1.5v9M1.5 6h9\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg><span>Warehouse</span></button>",
+      "css": ".ds-slot { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 140px; min-height: 48px; padding: 0 8px; border: 1.5px dashed var(--slot-line, oklch(0.64 0.022 255)); border-radius: 2px; background: none; color: var(--ink-2, oklch(0.47 0.022 258)); font: 700 1rem/1 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; } .ds-slot:hover { color: var(--ink, oklch(0.235 0.025 258)); border-color: var(--ink-2, oklch(0.47 0.022 258)); } .ds-slot:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; }"
+    },
+    {
+      "name": "Calendar picker",
+      "kind": "input",
+      "refersTo": "calendar-select",
+      "description": "Native select styled as a field, under a condensed-capitals label.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-cal\">Save shifts to</label><select id=\"ds-cal\" class=\"ds-select\"><option>me@example.com (main)</option></select>",
+      "css": ".ds-field-label { display: block; margin-bottom: 8px; color: var(--ink-2, oklch(0.47 0.022 258)); font: 600 0.875rem/1 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; } .ds-select { width: 100%; min-height: 48px; padding: 0 40px 0 14px; border: 1.5px solid var(--rule, oklch(0.885 0.01 252)); border-radius: 8px; background: var(--panel, oklch(0.995 0.002 250)); color: var(--ink, oklch(0.235 0.025 258)); font: 400 1rem 'Barlow', system-ui, sans-serif; } .ds-select:focus-visible { outline: 2px solid var(--ink, oklch(0.235 0.025 258)); outline-offset: 3px; }"
+    },
+    {
+      "name": "Week title",
+      "kind": "nav",
+      "description": "Sticky week header: condensed capitals over a 2px ink rule.",
+      "html": "<h2 class=\"ds-week-title\">This week <span>Sep 14 – 20</span></h2>",
+      "css": ".ds-week-title { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 12px 0 8px; border-bottom: 2px solid var(--ink, oklch(0.235 0.025 258)); font: 700 1.25rem/1.1 'Barlow Condensed', 'Arial Narrow', sans-serif; letter-spacing: 0.02em; text-transform: uppercase; } .ds-week-title span { color: var(--ink-2, oklch(0.47 0.022 258)); font: 600 1rem/1.1 'Barlow', system-ui, sans-serif; letter-spacing: 0; text-transform: none; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Crew Tape Board",
+    "overview": "Event and warehouse crews label everything with gaffer tape and plan on a ruled board. ShiftBoard is that board: each week is a ruled block of seven days, and a shift is a strip of tape pressed across the day it belongs to. Blue tape is an Event shift, orange tape is a Warehouse shift. Tapping an empty slot pulls a strip across it; tapping the strip peels it off. Nothing is saved until the single Save to Calendar button in the thumb-reach bar at the bottom.\n\nThis is an operating surface for phones first. Structure comes from rules and proximity, never from cards: hairlines between days, a heavy ink rule under each week title. Colour is spent almost entirely on the two tapes, so a glance down the board shows the shape of someone's weeks. Everything else is ink on a cool whiteboard by day and chalk on a road-case blue-black at night, following the phone's light or dark setting.\n\nThe tape is drawn honestly: a flat matte fill (gaffer tape is matte), torn ends, a slight hand-applied tilt that varies from row to row, and a one-pixel soft shadow where it sits on the board. No gloss, no bevel, no printed texture.",
+    "keyCharacteristics": [
+      "Two saturated tapes carry all the meaning; the UI around them is ink and grey.",
+      "Ruled rows and week headers instead of cards.",
+      "Condensed marker-style capitals for anything written on tape or the board.",
+      "Every tap target is at least 44px; tapes are 48px tall.",
+      "Light and dark are both designed, not inverted."
+    ],
+    "rules": [
+      { "name": "The Two Tapes Rule", "body": "Blue means Event and orange means Warehouse, everywhere. No button, link, badge or decoration borrows either colour.", "section": "colors" },
+      { "name": "The Edge Carries Contrast Rule", "body": "A tape too light to reach 3:1 against the board gets a 1.5px darker edge along its long sides that does (Gaffer Orange Edge, oklch(0.6 0.15 50), 3.7:1). Where the fill already clears 3:1, the edge matches the fill.", "section": "colors" },
+      { "name": "The Marker Rule", "body": "Anything written on the tape or the board is condensed capitals; anything that reads as a sentence is Barlow in sentence case.", "section": "typography" },
+      { "name": "The Taped By Hand Rule", "body": "Every strip is torn at both ends, sits a fraction of a degree off level, and varies its angle from row to row (between -1° and 0.9°), with every other tear mirrored. Today's date sits on masking tape at -3°.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep blue for Event and orange for Warehouse, and nothing else.",
+      "Do mark every unsaved change on the board itself: a dot for new tape, a struck-through outline for tape coming off.",
+      "Do keep every control at least 44px and every tape slot 48px.",
+      "Do give any light tape a darker edge until it reaches 3:1 against the board.",
+      "Do design both themes: whiteboard by day, road case at night."
+    ],
+    "donts": [
+      "Don't put days or weeks in cards, or use coloured side stripes; rules and spacing carry the structure.",
+      "Don't add gloss, gradients, glows, bevels or printed textures to the tape; it's matte.",
+      "Don't animate shifts arriving from the calendar; only the user's own taps get the pull and peel.",
+      "Don't put a small label above a heading; field labels above fields are fine.",
+      "Don't use emoji or text characters as icons; draw them as SVG, like the plus and the chevron."
+    ]
+  }
+}

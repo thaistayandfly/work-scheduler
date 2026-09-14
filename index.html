@@ -2,49 +2,91 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eff2f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12161e" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Tap the days you work Event or Warehouse and save them straight to your Google Calendar.">
 <title>ShiftBoard</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="app">
+<header class="topbar">
+  <h1 class="brand">Shift<span>Board</span></h1>
+  <div id="account" class="account" hidden>
+    <span id="accountEmail" class="account-email"></span>
+    <button id="signOutBtn" class="btn-text" type="button">Sign out</button>
+  </div>
+</header>
 
-  <header class="topbar">
-    <div class="brand">Shift<span>Board</span></div>
-    <div id="authArea" class="auth-area">
-      <button id="signInBtn" class="btn-ghost">Sign in with Google</button>
-      <span id="userEmail" class="user-email" hidden></span>
-    </div>
-  </header>
+<main class="page">
 
-  <div id="controls" class="controls" hidden>
-    <div class="calendar-select">
-      <label for="calendarSelect">Calendar</label>
-      <select id="calendarSelect"></select>
-      <button id="newCalendarBtn" class="btn-text" type="button">+ New calendar</button>
+  <section id="welcome" class="welcome" aria-labelledby="welcomeTitle">
+    <h2 id="welcomeTitle" class="welcome-title">Tape up your shifts. Save them to Google&nbsp;Calendar.</h2>
+    <p class="lede">Tap <strong>Event</strong> or <strong>Warehouse</strong> on every day you know you're working, this week or weeks ahead, then save once. ShiftBoard puts them in the calendar you choose.</p>
+    <figure class="demo" aria-hidden="true">
+      <div class="week-title">Example week</div>
+      <ol class="days">
+        <li class="day is-today">
+          <div class="day-label"><span class="dow">Mon</span><span class="dnum">14</span></div>
+          <div class="slots">
+            <span class="tape type-event is-on"><span class="strip"></span><span class="tape-label">Event</span></span>
+            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+          </div>
+        </li>
+        <li class="day">
+          <div class="day-label"><span class="dow">Tue</span><span class="dnum">15</span></div>
+          <div class="slots">
+            <span class="tape type-event"><span class="strip"></span><span class="tape-label">Event</span></span>
+            <span class="tape type-warehouse is-on"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+          </div>
+        </li>
+        <li class="day">
+          <div class="day-label"><span class="dow">Wed</span><span class="dnum">16</span></div>
+          <div class="slots">
+            <span class="tape type-event"><span class="strip"></span><span class="tape-label">Event</span></span>
+            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+          </div>
+        </li>
+      </ol>
+    </figure>
+    <button id="signInBtn" class="btn-primary sign-in" type="button">Sign in with Google</button>
+    <p class="fine">Everyone signs in with their own Google account. ShiftBoard only adds, shows and removes events titled “Event” or “Warehouse”.</p>
+  </section>
+
+  <div id="workspace" class="workspace" hidden>
+    <div class="controls">
+      <label class="field-label" for="calendarSelect">Save shifts to</label>
+      <div class="calendar-row">
+        <div class="select-wrap"><select id="calendarSelect"></select></div>
+        <button id="newCalendarBtn" class="btn-quiet" type="button">New calendar</button>
+      </div>
     </div>
-    <div class="week-nav">
-      <button id="prevWeek" class="nav-arrow" aria-label="Previous week" type="button">&#8249;</button>
-      <div id="weekLabel" class="week-label"></div>
-      <button id="nextWeek" class="nav-arrow" aria-label="Next week" type="button">&#8250;</button>
-    </div>
+
+    <p id="calendarEmpty" class="notice" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
+
+    <button id="earlierBtn" class="btn-text earlier" type="button">Show the week before</button>
+    <div id="board" class="board"></div>
+    <button id="moreWeeksBtn" class="btn-quiet more" type="button">Show 4 more weeks</button>
   </div>
 
-  <main id="weekGrid" class="week-grid" hidden></main>
+  <noscript><p class="notice">ShiftBoard needs JavaScript turned on to talk to Google Calendar.</p></noscript>
+</main>
 
-  <p id="emptyState" class="empty-state" hidden>Sign in with Google to load your week.</p>
+<footer id="saveBar" class="save-bar" hidden>
+  <div class="save-bar-inner">
+    <p id="statusText" class="status is-quiet">No unsaved changes</p>
+    <button id="saveBtn" class="btn-primary" type="button" disabled>Save to Calendar</button>
+  </div>
+</footer>
 
-  <footer id="saveBar" class="save-bar" hidden>
-    <div id="statusText" class="status-text">No changes yet</div>
-    <button id="saveBtn" class="btn-primary" type="button">Save changes</button>
-  </footer>
-
-</div>
-
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
