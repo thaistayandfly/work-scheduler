@@ -69,8 +69,11 @@
       </div>
     </div>
 
+    <button id="needsTimesBtn" class="needs-times-banner" type="button" hidden></button>
+
     <p id="calendarEmpty" class="notice" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
 
+    <p id="boardHint" class="board-hint">Tap a date to add times, nights, expenses or Other jobs.</p>
     <button id="earlierBtn" class="btn-text earlier" type="button">Show the week before</button>
     <div id="board" class="board"></div>
     <button id="moreWeeksBtn" class="btn-quiet more" type="button">Show 4 more weeks</button>
@@ -85,6 +88,8 @@
     <button id="saveBtn" class="btn-primary" type="button" disabled>Save to Calendar</button>
   </div>
 </footer>
+
+<dialog id="dayPanel" class="panel" aria-labelledby="dayPanelTitle"></dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 

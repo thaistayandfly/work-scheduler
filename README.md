@@ -30,6 +30,7 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 - The board shows this week and the next three; **Show 4 more weeks** and **Show the week before** add more. Tap **Event** / **Warehouse** on any day (both can be on at once) and tap again to remove it.
 - A day shows **Event** / **Warehouse** as selected when the calendar has an event with that title on it (`Event`, `Warehouse`, `Work: Event` or `Work: Warehouse`, any case) — including events from the first version of the app or added by hand. Other events are ignored.
 - **Save to Calendar** saves every week at once. It compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included). Anything that fails stays marked so you can save again.
+- **Tap a date** to enter a shift's real start and end (it can run past midnight), mark a night slept at work (Event), add expenses, or add an **Other** job (times and amount required, description optional). Entering times turns the calendar event from all-day into a timed one. A red banner lists past shifts from this month and last that still need their times.
 - **Sign out** forgets this browser's session so a coworker can sign in with their own Google account. Each coworker has to be added under **Test users** first (step 2).
 
 ## Known limits
