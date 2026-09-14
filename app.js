@@ -1,6 +1,9 @@
-const SCOPES = "https://www.googleapis.com/auth/calendar";
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+// "email" lets us show who's signed in and pass it as login_hint when the token needs renewing
+const SCOPES = CALENDAR_SCOPE + " email";
 const APP_TAG = "shiftboard";
 const WORK_TYPES = ["Event", "Warehouse"];
+const MIN_RESTORE_MS = 5 * 60 * 1000; // skip restoring a saved token that's about to expire
 
 let tokenClient = null;
 let accessToken = null;
@@ -12,6 +15,7 @@ let selectedCalendarId = localStorage.getItem("sb_calendarId") || "primary";
 let currentWeekStart = getMonday(new Date());
 // daysState[dateStr][type] = { active, eventId, originalActive }
 let daysState = {};
+let loadSeq = 0; // lets a slow events response for a previous week/calendar be ignored
 
 const el = (id) => document.getElementById(id);
 
@@ -26,17 +30,34 @@ window.addEventListener("load", () => {
     });
   });
   el("signInBtn").addEventListener("click", () => {
-    tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
+    if (!tokenClient) return; // Google's script hasn't loaded yet
+    // prompt "" only shows the consent screen when it's actually needed (e.g. first sign-in)
+    const opts = { prompt: "" };
+    const email = localStorage.getItem("sb_email");
+    if (email) opts.login_hint = email;
+    tokenClient.requestAccessToken(opts);
   });
   el("prevWeek").addEventListener("click", () => changeWeek(-7));
   el("nextWeek").addEventListener("click", () => changeWeek(7));
   el("newCalendarBtn").addEventListener("click", createNewCalendar);
   el("calendarSelect").addEventListener("change", (e) => {
+    if (!confirmDiscard()) {
+      e.target.value = selectedCalendarId;
+      return;
+    }
     selectedCalendarId = e.target.value;
     localStorage.setItem("sb_calendarId", selectedCalendarId);
-    loadEventsForWeek();
+    renderWeek();
   });
   el("saveBtn").addEventListener("click", saveChanges);
+  window.addEventListener("beforeunload", (e) => {
+    if (isDirty()) {
+      e.preventDefault();
+      e.returnValue = true;
+    }
+  });
+
+  restoreSession();
 });
 
 function waitForGoogle(cb) {
@@ -44,13 +65,37 @@ function waitForGoogle(cb) {
   else setTimeout(() => waitForGoogle(cb), 100);
 }
 
+// A browser-only app can't renew a token without a popup, so keep the current one for its
+// lifetime (~1h) instead of starting signed out on every page load.
+function restoreSession() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem("sb_token"));
+  } catch (e) {}
+  if (saved && saved.accessToken && saved.expiresAt - Date.now() > MIN_RESTORE_MS) {
+    startSession(saved.accessToken, saved.expiresAt);
+  } else {
+    localStorage.removeItem("sb_token");
+  }
+}
+
 function onTokenReceived(resp) {
   if (resp.error) {
     showToast("Sign-in failed: " + resp.error, true);
     return;
   }
-  accessToken = resp.access_token;
-  tokenExpiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
+  if (!google.accounts.oauth2.hasGrantedAllScopes(resp, CALENDAR_SCOPE)) {
+    showToast("Calendar access wasn't granted — sign in again and allow Google Calendar", true);
+    return;
+  }
+  const expiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
+  localStorage.setItem("sb_token", JSON.stringify({ accessToken: resp.access_token, expiresAt }));
+  startSession(resp.access_token, expiresAt);
+}
+
+function startSession(token, expiresAt) {
+  accessToken = token;
+  tokenExpiresAt = expiresAt;
 
   el("signInBtn").textContent = "Signed in";
   el("signInBtn").disabled = true;
@@ -60,7 +105,9 @@ function onTokenReceived(resp) {
   el("emptyState").hidden = true;
 
   fetchUserEmail();
-  loadCalendars();
+  // Signing back in after the token expired mid-edit: refresh what's saved but keep the unsaved toggles
+  if (isDirty()) loadEventsForWeek();
+  else loadCalendars();
 }
 
 function fetchUserEmail() {
@@ -68,6 +115,7 @@ function fetchUserEmail() {
     .then((r) => r.json())
     .then((info) => {
       if (info.email) {
+        localStorage.setItem("sb_email", info.email);
         el("userEmail").textContent = info.email;
         el("userEmail").hidden = false;
       }
@@ -90,12 +138,29 @@ function apiFetch(url, options = {}) {
       resetToSignedOut();
       throw new Error("unauthorized");
     }
+    // fetch() only rejects on network errors — Google's 4xx/5xx replies have to be failures too
+    if (!r.ok) {
+      return r
+        .json()
+        .catch(() => ({}))
+        .then((body) => {
+          throw new Error((body.error && body.error.message) || "HTTP " + r.status);
+        });
+    }
     return r;
   });
 }
 
+// Skips the toast when apiFetch just signed the user out — it already said "Session expired"
+function showApiError(prefix, err) {
+  console.error("ShiftBoard: " + prefix, err);
+  if (accessToken) showToast(prefix + ": " + err.message, true);
+}
+
 function resetToSignedOut() {
   accessToken = null;
+  tokenExpiresAt = 0;
+  localStorage.removeItem("sb_token");
   el("signInBtn").textContent = "Sign in with Google";
   el("signInBtn").disabled = false;
   el("controls").hidden = true;
@@ -110,7 +175,8 @@ function loadCalendars() {
   apiFetch("https://www.googleapis.com/calendar/v3/users/me/calendarList")
     .then((r) => r.json())
     .then((data) => {
-      calendars = data.items || [];
+      // Read-only calendars (Holidays, Birthdays, subscriptions) reject new events
+      calendars = (data.items || []).filter((cal) => cal.accessRole === "owner" || cal.accessRole === "writer");
       const select = el("calendarSelect");
       select.innerHTML = "";
       calendars.forEach((cal) => {
@@ -119,14 +185,21 @@ function loadCalendars() {
         opt.textContent = cal.summary + (cal.primary ? " (main)" : "");
         select.appendChild(opt);
       });
-      const stillExists = calendars.some((c) => c.id === selectedCalendarId);
-      if (!stillExists) selectedCalendarId = calendars[0] ? calendars[0].id : "primary";
+      // The list holds real IDs, never the "primary" alias, so fall back to the calendar flagged
+      // primary rather than whichever one the API happened to return first
+      if (!calendars.some((c) => c.id === selectedCalendarId)) {
+        const fallback = calendars.find((c) => c.primary) || calendars[0];
+        selectedCalendarId = fallback ? fallback.id : "primary";
+      }
+      localStorage.setItem("sb_calendarId", selectedCalendarId);
       select.value = selectedCalendarId;
       renderWeek();
-    });
+    })
+    .catch((err) => showApiError("Couldn't load calendars", err));
 }
 
 function createNewCalendar() {
+  if (!confirmDiscard()) return;
   const name = prompt("Name for the new calendar (e.g. Work):");
   if (!name) return;
   apiFetch("https://www.googleapis.com/calendar/v3/calendars", {
@@ -141,7 +214,7 @@ function createNewCalendar() {
       showToast('Calendar "' + name + '" created');
       loadCalendars();
     })
-    .catch(() => showToast("Couldn't create calendar", true));
+    .catch((err) => showApiError("Couldn't create calendar", err));
 }
 
 // ---------- Week rendering ----------
@@ -156,12 +229,15 @@ function getMonday(date) {
 }
 
 function changeWeek(deltaDays) {
+  if (!confirmDiscard()) return;
   currentWeekStart.setDate(currentWeekStart.getDate() + deltaDays);
   renderWeek();
 }
 
+// Local calendar date. toISOString() converts to UTC first, which in UTC+ timezones
+// turns local midnight into the previous day.
 function dateStr(d) {
-  return d.toISOString().slice(0, 10);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
 function renderWeek() {
@@ -235,6 +311,7 @@ function togglePill(ds, type, pillEl, cardEl) {
 
 function loadEventsForWeek() {
   if (!accessToken) return;
+  const seq = ++loadSeq;
   const start = new Date(currentWeekStart);
   start.setDate(start.getDate() - 1); // pad a day either side to dodge timezone edge effects on all-day events
   const end = new Date(currentWeekStart);
@@ -256,27 +333,30 @@ function loadEventsForWeek() {
   apiFetch(url)
     .then((r) => r.json())
     .then((data) => {
-      if (data.error) {
-        console.error("ShiftBoard: events.list error", data.error);
-        showToast("Couldn't load events: " + data.error.message, true);
-        return;
-      }
-      console.log("ShiftBoard: loaded", (data.items || []).length, "tagged event(s) for this week", data.items);
-      (data.items || []).forEach((item) => {
+      if (seq !== loadSeq) return; // a newer week/calendar load has started since
+      const items = data.items || [];
+      console.log("ShiftBoard: loaded", items.length, "tagged event(s) for this week", items);
+      const saved = {};
+      items.forEach((item) => {
         const ds = item.start && item.start.date;
         const type = item.extendedProperties && item.extendedProperties.private && item.extendedProperties.private.workType;
-        if (ds && type && daysState[ds] && daysState[ds][type]) {
-          daysState[ds][type].active = true;
-          daysState[ds][type].eventId = item.id;
-          daysState[ds][type].originalActive = true;
-        }
+        if (ds && type) saved[ds + "|" + type] = item.id;
+      });
+      // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
+      // keeping toggles the user hasn't saved yet — including ones that just failed to save
+      Object.entries(daysState).forEach(([ds, day]) => {
+        WORK_TYPES.forEach((type) => {
+          const entry = day[type];
+          const unsaved = entry.active !== entry.originalActive;
+          entry.eventId = saved[ds + "|" + type] || null;
+          entry.originalActive = !!entry.eventId;
+          if (!unsaved) entry.active = entry.originalActive;
+        });
       });
       syncPillsToState();
       updateSaveState();
     })
-    .catch((err) => {
-      console.error("ShiftBoard: loadEventsForWeek failed", err);
-    });
+    .catch((err) => showApiError("Couldn't load events", err));
 }
 
 function syncPillsToState() {
@@ -295,13 +375,18 @@ function syncPillsToState() {
 
 // ---------- Saving ----------
 
+function isDirty() {
+  return Object.values(daysState).some((day) =>
+    WORK_TYPES.some((type) => day[type].active !== day[type].originalActive)
+  );
+}
+
+function confirmDiscard() {
+  return !isDirty() || confirm("You have unsaved changes for this week. Discard them?");
+}
+
 function updateSaveState() {
-  let dirty = false;
-  Object.values(daysState).forEach((day) => {
-    WORK_TYPES.forEach((type) => {
-      if (day[type].active !== day[type].originalActive) dirty = true;
-    });
-  });
+  const dirty = isDirty();
   el("saveBtn").disabled = !dirty;
   el("statusText").textContent = dirty ? "Unsaved changes" : "No changes yet";
 }
@@ -326,18 +411,19 @@ function saveChanges() {
   el("statusText").textContent = "Saving…";
 
   Promise.allSettled(tasks).then((results) => {
-    const failed = results.filter((r) => r.status === "rejected").length;
-    if (failed) {
-      showToast(failed + " change(s) failed to save", true);
+    const failures = results.filter((r) => r.status === "rejected");
+    if (failures.length) {
+      showApiError(failures.length + " change(s) failed to save", failures[0].reason);
     } else {
       showToast("Saved");
     }
+    updateSaveState();
     loadEventsForWeek();
   });
 }
 
 function insertEvent(ds, type) {
-  const end = new Date(ds);
+  const end = new Date(ds + "T00:00:00"); // no offset = local midnight (a bare "YYYY-MM-DD" parses as UTC)
   end.setDate(end.getDate() + 1);
 
   const body = {

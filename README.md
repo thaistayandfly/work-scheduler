@@ -25,14 +25,15 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 
 ## How it works
 
-- Sign-in uses Google Identity Services in the browser — no server, no stored tokens. The session lasts about an hour; after that, sign in again.
-- Pick or create a calendar from the dropdown.
+- Sign-in uses Google Identity Services in the browser — no server. The access token (good for about an hour) is kept in `localStorage`, so reloading the page keeps you signed in. When it expires, one click on **Sign in with Google** gets a new one without the consent screen, and unsaved toggles are kept.
+- Pick or create a calendar from the dropdown. Only calendars you can edit are listed; it defaults to your main calendar.
 - Toggle **Event** / **Warehouse** per day (both can be on at once, not two of the same type).
 - **Save changes** creates all-day events tagged with a hidden marker, so the app can recognize and delete/update them later — untag any calendar events you make manually elsewhere, they won't be touched.
-- Switching weeks re-reads saved days from Calendar directly (no local database).
+- Switching weeks re-reads saved days from Calendar directly (no local database). Save before switching — the app asks before discarding unsaved toggles.
 
 ## Known limits
 
 - Testing-mode OAuth caps at 100 approved test users.
 - No offline/local storage of schedule data — Calendar is the source of truth.
 - If two ShiftBoard sessions edit the same week at once, last save wins.
+- Staying signed in longer than an hour would need a backend — a browser-only app can't safely hold a refresh token.
