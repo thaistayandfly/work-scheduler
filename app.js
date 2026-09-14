@@ -13,7 +13,8 @@ let calendars = [];
 let selectedCalendarId = localStorage.getItem("sb_calendarId") || "primary";
 
 let currentWeekStart = getMonday(new Date());
-// daysState[dateStr][type] = { active, eventId, originalActive }
+// daysState[dateStr][type] = { active, originalActive, eventIds }
+//   originalActive/eventIds: what the calendar had when the week loaded; active: what's selected now
 let daysState = {};
 let loadSeq = 0; // lets a slow events response for a previous week/calendar be ignored
 
@@ -110,8 +111,10 @@ function startSession(token, expiresAt) {
   else loadCalendars();
 }
 
+// Only used to display the email and pre-fill the next sign-in, so it uses plain fetch():
+// a failure here must never count as "session expired" and sign the user out.
 function fetchUserEmail() {
-  apiFetch("https://www.googleapis.com/oauth2/v3/userinfo")
+  fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + accessToken } })
     .then((r) => r.json())
     .then((info) => {
       if (info.email) {
@@ -263,8 +266,8 @@ function renderWeek() {
   days.forEach((d) => {
     const ds = dateStr(d);
     daysState[ds] = {
-      Event: { active: false, eventId: null, originalActive: false },
-      Warehouse: { active: false, eventId: null, originalActive: false },
+      Event: { active: false, originalActive: false, eventIds: [] },
+      Warehouse: { active: false, originalActive: false, eventIds: [] },
     };
 
     const card = document.createElement("div");
@@ -321,7 +324,6 @@ function loadEventsForWeek() {
     timeMin: start.toISOString(),
     timeMax: end.toISOString(),
     singleEvents: "true",
-    privateExtendedProperty: "appTag=" + APP_TAG,
   });
 
   const url =
@@ -334,22 +336,21 @@ function loadEventsForWeek() {
     .then((r) => r.json())
     .then((data) => {
       if (seq !== loadSeq) return; // a newer week/calendar load has started since
-      const items = data.items || [];
-      console.log("ShiftBoard: loaded", items.length, "tagged event(s) for this week", items);
-      const saved = {};
-      items.forEach((item) => {
-        const ds = item.start && item.start.date;
-        const type = item.extendedProperties && item.extendedProperties.private && item.extendedProperties.private.workType;
-        if (ds && type) saved[ds + "|" + type] = item.id;
+      const saved = {}; // "2026-09-14|Event" -> [eventId, ...]
+      (data.items || []).forEach((item) => {
+        const ds = eventDate(item);
+        const type = workTypeOf(item);
+        if (ds && type) (saved[ds + "|" + type] = saved[ds + "|" + type] || []).push(item.id);
       });
+      console.log("ShiftBoard: work events this week", saved);
       // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
       // keeping toggles the user hasn't saved yet — including ones that just failed to save
       Object.entries(daysState).forEach(([ds, day]) => {
         WORK_TYPES.forEach((type) => {
           const entry = day[type];
           const unsaved = entry.active !== entry.originalActive;
-          entry.eventId = saved[ds + "|" + type] || null;
-          entry.originalActive = !!entry.eventId;
+          entry.eventIds = saved[ds + "|" + type] || [];
+          entry.originalActive = entry.eventIds.length > 0;
           if (!unsaved) entry.active = entry.originalActive;
         });
       });
@@ -357,6 +358,22 @@ function loadEventsForWeek() {
       updateSaveState();
     })
     .catch((err) => showApiError("Couldn't load events", err));
+}
+
+// Events this app creates carry a hidden tag. Others — from the first version of the app, or added
+// by hand — count when their title is the work type, e.g. "Warehouse" or "Work: Warehouse".
+function workTypeOf(item) {
+  const tag = item.extendedProperties && item.extendedProperties.private;
+  if (tag && tag.appTag === APP_TAG && WORK_TYPES.includes(tag.workType)) return tag.workType;
+  const title = (item.summary || "").trim().replace(/^work:\s*/i, "").toLowerCase();
+  return WORK_TYPES.find((type) => type.toLowerCase() === title) || null;
+}
+
+// All-day events carry a plain date; timed ones count on the local day they start
+function eventDate(item) {
+  if (!item.start) return null;
+  if (item.start.date) return item.start.date;
+  return item.start.dateTime ? dateStr(new Date(item.start.dateTime)) : null;
 }
 
 function syncPillsToState() {
@@ -391,6 +408,8 @@ function updateSaveState() {
   el("statusText").textContent = dirty ? "Unsaved changes" : "No changes yet";
 }
 
+// Compares what's selected now with what the calendar had when the week loaded:
+// selected but not in the calendar -> create; in the calendar but unselected -> delete.
 function saveChanges() {
   const tasks = [];
 
@@ -399,8 +418,9 @@ function saveChanges() {
       const entry = types[type];
       if (entry.active && !entry.originalActive) {
         tasks.push(insertEvent(ds, type));
-      } else if (!entry.active && entry.originalActive && entry.eventId) {
-        tasks.push(deleteEvent(entry.eventId));
+      } else if (!entry.active && entry.originalActive) {
+        // Every matching event that day goes, so a duplicate can't make the type reappear
+        entry.eventIds.forEach((id) => tasks.push(deleteEvent(id)));
       }
     });
   });
@@ -427,7 +447,7 @@ function insertEvent(ds, type) {
   end.setDate(end.getDate() + 1);
 
   const body = {
-    summary: "Work: " + type,
+    summary: type,
     start: { date: ds },
     end: { date: dateStr(end) },
     extendedProperties: { private: { appTag: APP_TAG, workType: type } },

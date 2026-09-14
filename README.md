@@ -28,7 +28,8 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 - Sign-in uses Google Identity Services in the browser — no server. The access token (good for about an hour) is kept in `localStorage`, so reloading the page keeps you signed in. When it expires, one click on **Sign in with Google** gets a new one without the consent screen, and unsaved toggles are kept.
 - Pick or create a calendar from the dropdown. Only calendars you can edit are listed; it defaults to your main calendar.
 - Toggle **Event** / **Warehouse** per day (both can be on at once, not two of the same type).
-- **Save changes** creates all-day events tagged with a hidden marker, so the app can recognize and delete/update them later — untag any calendar events you make manually elsewhere, they won't be touched.
+- A day shows **Event** / **Warehouse** as selected when the calendar has an event with that title on it (`Event`, `Warehouse`, `Work: Event` or `Work: Warehouse`, any case) — including events from the first version of the app or added by hand. Other events are ignored.
+- **Save changes** compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included).
 - Switching weeks re-reads saved days from Calendar directly (no local database). Save before switching — the app asks before discarding unsaved toggles.
 
 ## Known limits
