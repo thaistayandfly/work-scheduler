@@ -137,7 +137,7 @@
     "rules": [
       { "name": "The Two Tapes Rule", "body": "Blue means Event and orange means Warehouse, everywhere. No button, link, badge or decoration borrows either colour.", "section": "colors" },
       { "name": "The Edge Carries Contrast Rule", "body": "A tape too light to reach 3:1 against the board gets a 1.5px darker edge along its long sides that does (Gaffer Orange Edge, oklch(0.6 0.15 50), 3.7:1). Where the fill already clears 3:1, the edge matches the fill.", "section": "colors" },
-      { "name": "The Marker Rule", "body": "Anything written on the tape or the board is condensed capitals; anything that reads as a sentence is Barlow in sentence case.", "section": "typography" },
+      { "name": "The Marker Rule", "body": "Anything written on the tape or the board is condensed capitals; anything that reads as a sentence is Barlow in sentence case. Hebrew has no capitals and is never letter-spaced, so in Hebrew the same roles are Heebo bold with no tracking. The ShiftBoard wordmark keeps its capitals in both languages.", "section": "typography" },
       { "name": "The Taped By Hand Rule", "body": "Every strip is torn at both ends, sits a fraction of a degree off level, and varies its angle from row to row (between -1° and 0.9°), with every other tear mirrored. Today's date sits on masking tape at -3°.", "section": "elevation" }
     ],
     "dos": [

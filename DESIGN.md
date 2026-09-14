@@ -29,37 +29,37 @@ colors:
   alarm-red-night-text: "oklch(0.74 0.15 25)"
 typography:
   display:
-    fontFamily: "Barlow Condensed, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
+    fontFamily: "Barlow Condensed, Heebo, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
     fontSize: "2.5rem"
     fontWeight: 700
     lineHeight: 0.98
     letterSpacing: "0.005em"
   headline:
-    fontFamily: "Barlow Condensed, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
+    fontFamily: "Barlow Condensed, Heebo, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 700
     lineHeight: 1.1
     letterSpacing: "0.02em"
   title:
-    fontFamily: "Barlow Condensed, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
+    fontFamily: "Barlow Condensed, Heebo, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
     fontSize: "1.625rem"
     fontWeight: 700
     lineHeight: 1
     fontFeature: "tnum"
   label:
-    fontFamily: "Barlow Condensed, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
+    fontFamily: "Barlow Condensed, Heebo, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
     fontSize: "1rem"
     fontWeight: 700
     lineHeight: 1
     letterSpacing: "0.06em"
   meta:
-    fontFamily: "Barlow Condensed, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
+    fontFamily: "Barlow Condensed, Heebo, Roboto Condensed, Arial Narrow, system-ui, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 600
     lineHeight: 1
     letterSpacing: "0.1em"
   body:
-    fontFamily: "Barlow, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    fontFamily: "Barlow, Heebo, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.45
@@ -171,6 +171,7 @@ A restrained board of cool greys that exists to make two strips of tape unmistak
 
 **Display Font:** Barlow Condensed (with Roboto Condensed, Arial Narrow)
 **Body Font:** Barlow (with system-ui)
+**Hebrew:** Heebo for both roles. Barlow has no Hebrew letters, so Hebrew text falls through to Heebo, and only Heebo's Hebrew subset ever downloads.
 
 **Character:** One industrial family in two widths. The condensed cut, set in capitals, is the marker on the tape and the stencil on the board; the regular cut carries sentences and status.
 
@@ -183,7 +184,7 @@ A restrained board of cool greys that exists to make two strips of tape unmistak
 - **Body** (400, 1rem, 1.45): sentences, status text, the calendar picker. Never below 16px in a form field (iOS zooms otherwise).
 
 ### Named Rules
-**The Marker Rule.** Anything written on the tape or the board is condensed capitals; anything that reads as a sentence is Barlow in sentence case.
+**The Marker Rule.** Anything written on the tape or the board is condensed capitals; anything that reads as a sentence is Barlow in sentence case. Hebrew has no capitals and is never letter-spaced, so in Hebrew the same roles are Heebo bold with no tracking. The ShiftBoard wordmark keeps its capitals in both languages.
 
 ## Layout
 
@@ -192,6 +193,8 @@ A single column on phones, capped at 34rem and centred, with a 16px gutter that 
 The save bar is fixed to the bottom in thumb reach, above the home indicator, with the status on the left and Save to Calendar on the right. The page leaves room beneath the last week so nothing hides behind it.
 
 From 60rem the measure widens to 68rem and weeks sit two side by side. The signed-out screen becomes two columns: copy on the left, the example week on the right, centred in the viewport. Under 22.5rem the date column narrows to 2.75rem and tape labels tighten so "Warehouse" still fits a 320px phone.
+
+In Hebrew the whole page runs right to left: the date column sits on the right, Event is the first tape (on the right), the save bar's status is on the right with Save on the left, and the month arrows swap sides. Email addresses and times still read left to right.
 
 Spacing runs on a 4px base (4, 8, 12, 16, 24, 32, 48). Related things sit 8-16px apart; separate groups get 24-32px.
 
@@ -215,7 +218,7 @@ Tape has almost square corners (2px) and torn ends drawn as SVG masks. Fields an
 ### Tape slot
 The signature component: one per work type per day, a 48px-tall toggle button with `aria-pressed`.
 - **Empty:** a dashed outline, a drawn plus, and the type name in Pencil Grey.
-- **On:** a strip of the type's tape pulled across the slot (240ms, `cubic-bezier(0.16, 1, 0.3, 1)`, from the left). Switching off peels it away to the right (150ms, `cubic-bezier(0.5, 0, 0.75, 0)`). Pressing scales it to 0.96.
+- **On:** a strip of the type's tape pulled across the slot from the reading side (240ms, `cubic-bezier(0.16, 1, 0.3, 1)`; from the left in English, from the right in Hebrew). Switching off peels it away the other way (150ms, `cubic-bezier(0.5, 0, 0.75, 0)`). Pressing scales it to 0.96.
 - **Unsaved add:** the tape carries a small dot after its label.
 - **Unsaved removal:** the slot shows a 2px dashed outline in that tape's colour with the label struck through.
 - **Loading:** slots are disabled at 45% opacity until their week's shifts arrive; shifts that load from the calendar appear in place without the pull.
@@ -228,8 +231,11 @@ The signature component: one per work type per day, a 48px-tall toggle button wi
 - **Quiet** ("New calendar", "Show 4 more weeks"): a transparent fill, a 1.5px Hairline border and Marker Ink text, 44px tall.
 - **Text** ("Sign out", "Show the week before", "Try again"): underlined Pencil Grey, never wrapping, 44px tall.
 
+### Language switch
+A Text button in the top bar that names the other language in its own script: "עברית" on the English page, "English" on the Hebrew one. It starts from the phone's language and each device remembers the choice. Switching reloads the page in the other language; the sign-in survives, and it asks first if any taps are unsaved.
+
 ### Calendar picker
-A native select styled as a field: Whiteboard Panel, a 1.5px Hairline border, 8px corners, 48px tall, a drawn chevron, and 16px text. It sits under a Meta label that reads "Save shifts to".
+A native select styled as a field: Whiteboard Panel, a 1.5px Hairline border, 8px corners, 48px tall, a drawn chevron, and 16px text. It sits under a Meta label that reads "Save shifts to". Each calendar's name reads in its own direction, so an email address starts from its beginning on a Hebrew page too.
 
 ### Week title
 Headline capitals ("This week", "Next week", "Last week", or the date range alone), the date range in Pencil Grey beside them, and a 2px Marker Ink rule beneath. It sticks to the top while scrolling.

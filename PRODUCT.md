@@ -8,7 +8,7 @@ web
 
 ## Users
 
-People who work two kinds of shifts: event crew ("Event") and warehouse ("Warehouse"), plus the occasional one-off paid job ("Other"). The owner and a few coworkers each sign in with their own Google account and manage only their own shifts and pay, mostly on their phones.
+People who work two kinds of shifts: event crew ("Event") and warehouse ("Warehouse"), plus the occasional one-off paid job ("Other"). The owner and a few coworkers each sign in with their own Google account and manage only their own shifts and pay, mostly on their phones. Some are more comfortable in Hebrew, others in English.
 
 ## Product Purpose
 
@@ -28,7 +28,7 @@ A two-tap shift board that writes straight into each person's own Google Calenda
 - Typical planning session: add the known shifts for the coming week or weeks, save, close.
 - After shifts: enter the real times and extras for the shifts that happened.
 - Month end: review the month and send it. Nothing is ever sent automatically.
-- The company receives one PDF per person per month, in English and Hebrew, at one shared company email address.
+- The company receives one PDF per person per month at one shared company email address. It is usually in Hebrew; each person can choose English instead.
 - Google Calendar is the source of truth for shifts. A day counts as Event or Warehouse when the chosen calendar has an event with that title on it.
 
 ## Capabilities and Constraints
@@ -49,7 +49,10 @@ A two-tap shift board that writes straight into each person's own Google Calenda
   - Other: the amount entered for that job.
   - Expenses: amount + type (travel, food, hotel, other), several per shift, paid back at cost.
   - No break deductions, minutes count exactly, and a shift is paid in the month it starts.
+- **Salary and expenses stay apart:** the total to pay is the gross salary (shift pay, extra hours, nights and Other jobs). Expenses are reimbursed separately and never added to it: they were already paid with taxed money, while the salary is taxed when paid.
 - **Rates:** a change applies to every month not yet sent, for the whole month (a mid-month raise covers that month). Sent months never change.
+- **The monthly report:** the summary first (name, month, year, total to pay (gross salary), expenses reimbursement), then a small hours summary for anyone who wants it, then one row per shift with a totals row. Rates never appear on it.
+- **Languages:** each person picks the app's language (English or Hebrew, right to left in Hebrew) on their device, and separately the report language (Hebrew by default, or English). A report and the sheet's tabs are always entirely one language, never mixed.
 - **Currency:** Israeli shekel (₪).
 - **Sending:** a review screen shows every shift, the pay and the totals; Send stays locked until every shift has times. Send emails the month's PDF from the user's Gmail to the company address, keeps a copy in the user's Drive and marks the month sent. A sent month can be reopened, fixed and resent marked "Corrected".
 - **Identity on the PDF:** the user's full name, which the user must confirm or correct before the first send (Google account names can be nicknames).
@@ -61,7 +64,7 @@ A two-tap shift board that writes straight into each person's own Google Calenda
 ## Brand Commitments
 
 - Name: ShiftBoard.
-- Blue means Event, orange means Warehouse.
+- Blue means Event, orange means Warehouse, in either language. Calendar events keep the titles "Event" and "Warehouse" whatever the app's language.
 - Tap a type to select it and tap again to remove it; shifts loaded from the calendar look exactly like freshly selected ones.
 
 ## Evidence on Hand

@@ -30,8 +30,9 @@
   --shadow-bar: 0 -10px 30px -16px oklch(0.2 0.03 258 / 0.35);
   --shadow-float: 0 14px 30px -12px oklch(0.2 0.03 258 / 0.5);
 
-  --font-ui: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-label: "Barlow Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  /* Barlow has no Hebrew letters, so Hebrew falls through to Heebo (only its Hebrew subset ever downloads) */
+  --font-ui: "Barlow", "Heebo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-label: "Barlow Condensed", "Heebo", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
 
   --s1: 4px;
   --s2: 8px;
@@ -234,6 +235,7 @@ button {
   color: var(--ink-2);
 }
 
+.topbar-end,
 .account {
   display: flex;
   align-items: center;
@@ -241,7 +243,13 @@ button {
   min-width: 0;
 }
 
+.lang-btn {
+  flex-shrink: 0;
+}
+
+/* An address reads left to right in a Hebrew page too, and is cut at its end */
 .account-email {
+  direction: ltr;
   min-width: 0;
   overflow: hidden;
   color: var(--ink-2);
@@ -342,7 +350,7 @@ button {
   content: "";
   position: absolute;
   top: 50%;
-  right: 14px;
+  inset-inline-end: 14px;
   width: 12px;
   height: 12px;
   margin-top: -6px;
@@ -352,10 +360,12 @@ button {
   pointer-events: none;
 }
 
-#calendarSelect {
+#calendarSelect,
+.settings-form select {
   width: 100%;
   min-height: 48px;
-  padding: 0 40px 0 14px;
+  padding-block: 0;
+  padding-inline: 14px 40px;
   border: 1.5px solid var(--rule);
   border-radius: var(--radius-field);
   background: var(--panel);
@@ -363,6 +373,10 @@ button {
   text-overflow: ellipsis;
   -webkit-appearance: none;
   appearance: none;
+}
+
+.settings-form select {
+  background: var(--board); /* like the other settings fields */
 }
 
 .earlier {
@@ -560,7 +574,7 @@ button {
   display: inline-block;
   width: 0.7em;
   height: 0.7em;
-  margin-right: 0.4em;
+  margin-inline-end: 0.4em;
   vertical-align: -0.02em;
   background: currentColor;
   -webkit-mask: var(--plus) center / contain no-repeat;
@@ -613,7 +627,7 @@ button {
   display: inline-block;
   width: 7px;
   height: 7px;
-  margin-left: 7px;
+  margin-inline-start: 7px;
   border-radius: 50%;
   background: currentColor;
   vertical-align: 0.12em;
@@ -1129,10 +1143,28 @@ body.is-pay .toast {
   letter-spacing: 0;
 }
 
+.total-line small {
+  color: var(--ink-2);
+  font: 600 0.8125rem/1 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.total-line.reimburse {
+  margin-top: var(--s2);
+}
+
+.total-line.reimburse strong {
+  font-size: 1.5rem;
+}
+
+/* The per-type breakdown is there when wanted, but quiet */
 .total-breakdown {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: var(--s3) 0 0;
+  color: var(--ink-2);
+  font-size: 0.875rem;
 }
 
 .total-breakdown div {
@@ -1414,4 +1446,33 @@ a.btn-text {
     outline: 3px solid CanvasText;
     outline-offset: -3px;
   }
+}
+
+/* ---------- Hebrew: right to left ---------- */
+
+/* Tape is pulled on from the reading side and peeled off the other way */
+[dir="rtl"] .strip::before {
+  transform-origin: left center;
+}
+
+[dir="rtl"] .tape.is-on .strip::before {
+  transform-origin: right center;
+}
+
+[dir="rtl"] .month-step.prev::before {
+  transform: rotate(-90deg);
+}
+
+[dir="rtl"] .month-step.next::before {
+  transform: rotate(90deg);
+}
+
+/* Hebrew has no capitals and isn't letter-spaced; the brand keeps its look */
+:root[lang="he"] :where(body *:not(.brand, .brand *)) {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:root[lang="he"] .welcome-title {
+  line-height: 1.1;
 }

@@ -12,113 +12,123 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&family=Heebo:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- Words marked data-l / data-l-html / data-l-aria are swapped for the chosen language (i18n.js) -->
 <header class="topbar">
   <h1 class="brand">Shift<span>Board</span></h1>
-  <div id="account" class="account" hidden>
-    <span id="accountEmail" class="account-email"></span>
-    <button id="signOutBtn" class="btn-text" type="button">Sign out</button>
+  <div class="topbar-end">
+    <div id="account" class="account" hidden>
+      <span id="accountEmail" class="account-email"></span>
+      <button id="signOutBtn" class="btn-text" type="button" data-l="signOut">Sign out</button>
+    </div>
+    <button id="langBtn" class="btn-text lang-btn" type="button" lang="he">עברית</button>
   </div>
 </header>
 
-<nav id="viewTabs" class="view-tabs" aria-label="Views" hidden>
-  <button id="tabShifts" class="view-tab" type="button" aria-pressed="true">Shifts</button>
-  <button id="tabPay" class="view-tab" type="button" aria-pressed="false">Pay</button>
+<nav id="viewTabs" class="view-tabs" aria-label="Views" data-l-aria="views" hidden>
+  <button id="tabShifts" class="view-tab" type="button" aria-pressed="true" data-l="tabShifts">Shifts</button>
+  <button id="tabPay" class="view-tab" type="button" aria-pressed="false" data-l="tabPay">Pay</button>
 </nav>
 
 <main class="page">
 
   <section id="welcome" class="welcome" aria-labelledby="welcomeTitle">
-    <h2 id="welcomeTitle" class="welcome-title">Tape up your shifts. Save them to Google&nbsp;Calendar.</h2>
-    <p class="lede">Tap <strong>Event</strong> or <strong>Warehouse</strong> on every day you know you're working, this week or weeks ahead, then save once. ShiftBoard puts them in the calendar you choose.</p>
+    <h2 id="welcomeTitle" class="welcome-title" data-l-html="welcomeTitle">Tape up your shifts. Save them to Google&nbsp;Calendar.</h2>
+    <p class="lede" data-l-html="lede">Tap <strong>Event</strong> or <strong>Warehouse</strong> on every day you know you're working, this week or weeks ahead, then save once. ShiftBoard puts them in the calendar you choose.</p>
     <figure class="demo" aria-hidden="true">
-      <div class="week-title">Example week</div>
+      <div class="week-title" data-l="exampleWeek">Example week</div>
       <ol class="days">
         <li class="day is-today">
-          <div class="day-label"><span class="dow">Mon</span><span class="dnum">14</span></div>
+          <div class="day-label"><span class="dow" data-l="demoDays.0">Mon</span><span class="dnum">14</span></div>
           <div class="slots">
-            <span class="tape type-event is-on"><span class="strip"></span><span class="tape-label">Event</span></span>
-            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+            <span class="tape type-event is-on"><span class="strip"></span><span class="tape-label" data-l="types.Event">Event</span></span>
+            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label" data-l="types.Warehouse">Warehouse</span></span>
           </div>
         </li>
         <li class="day">
-          <div class="day-label"><span class="dow">Tue</span><span class="dnum">15</span></div>
+          <div class="day-label"><span class="dow" data-l="demoDays.1">Tue</span><span class="dnum">15</span></div>
           <div class="slots">
-            <span class="tape type-event"><span class="strip"></span><span class="tape-label">Event</span></span>
-            <span class="tape type-warehouse is-on"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+            <span class="tape type-event"><span class="strip"></span><span class="tape-label" data-l="types.Event">Event</span></span>
+            <span class="tape type-warehouse is-on"><span class="strip"></span><span class="tape-label" data-l="types.Warehouse">Warehouse</span></span>
           </div>
         </li>
         <li class="day">
-          <div class="day-label"><span class="dow">Wed</span><span class="dnum">16</span></div>
+          <div class="day-label"><span class="dow" data-l="demoDays.2">Wed</span><span class="dnum">16</span></div>
           <div class="slots">
-            <span class="tape type-event"><span class="strip"></span><span class="tape-label">Event</span></span>
-            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label">Warehouse</span></span>
+            <span class="tape type-event"><span class="strip"></span><span class="tape-label" data-l="types.Event">Event</span></span>
+            <span class="tape type-warehouse"><span class="strip"></span><span class="tape-label" data-l="types.Warehouse">Warehouse</span></span>
           </div>
         </li>
       </ol>
     </figure>
-    <button id="signInBtn" class="btn-primary sign-in" type="button">Sign in with Google</button>
-    <p class="fine">Everyone signs in with their own Google account. ShiftBoard only adds, shows and removes events titled “Event” or “Warehouse”.</p>
+    <button id="signInBtn" class="btn-primary sign-in" type="button" data-l="signIn">Sign in with Google</button>
+    <p class="fine" data-l="fine">Everyone signs in with their own Google account. ShiftBoard only adds, shows and removes events titled “Event” or “Warehouse”.</p>
   </section>
 
   <div id="workspace" class="workspace" hidden>
     <div class="controls">
-      <label class="field-label" for="calendarSelect">Save shifts to</label>
+      <label class="field-label" for="calendarSelect" data-l="saveShiftsTo">Save shifts to</label>
       <div class="calendar-row">
         <div class="select-wrap"><select id="calendarSelect"></select></div>
-        <button id="newCalendarBtn" class="btn-quiet" type="button">New calendar</button>
+        <button id="newCalendarBtn" class="btn-quiet" type="button" data-l="newCalendar">New calendar</button>
       </div>
     </div>
 
     <button id="needsTimesBtn" class="needs-times-banner" type="button" hidden></button>
 
-    <p id="calendarEmpty" class="notice" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
+    <p id="calendarEmpty" class="notice" data-l-html="calendarEmpty" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
 
-    <p id="boardHint" class="board-hint">Tap a date to add times, nights, expenses or Other jobs.</p>
-    <button id="earlierBtn" class="btn-text earlier" type="button">Show the week before</button>
+    <p id="boardHint" class="board-hint" data-l="boardHint">Tap a date to add times, nights, expenses or Other jobs.</p>
+    <button id="earlierBtn" class="btn-text earlier" type="button" data-l="earlier">Show the week before</button>
     <div id="board" class="board"></div>
-    <button id="moreWeeksBtn" class="btn-quiet more" type="button">Show 4 more weeks</button>
+    <button id="moreWeeksBtn" class="btn-quiet more" type="button" data-l="moreWeeks">Show 4 more weeks</button>
   </div>
 
   <section id="payView" class="pay-view" hidden>
     <div id="driveConnect" class="connect" hidden>
-      <h2 class="connect-title">Set up your pay sheet</h2>
-      <p>ShiftBoard keeps your rates and a table for each month in a Google Sheet in your own Drive. It can only open files it creates itself.</p>
-      <button id="connectDriveBtn" class="btn-primary" type="button">Connect Google Drive</button>
+      <h2 class="connect-title" data-l="connectTitle">Set up your pay sheet</h2>
+      <p data-l="connectText">ShiftBoard keeps your rates and a table for each month in a Google Sheet in your own Drive. It can only open files it creates itself.</p>
+      <button id="connectDriveBtn" class="btn-primary" type="button" data-l="connectDrive">Connect Google Drive</button>
     </div>
 
     <div id="payContent" class="pay-content" hidden>
       <div class="month-nav">
-        <button id="prevMonth" class="month-step prev" type="button" aria-label="Previous month"></button>
+        <button id="prevMonth" class="month-step prev" type="button" aria-label="Previous month" data-l-aria="prevMonth"></button>
         <h2 id="monthTitle" class="month-title"></h2>
-        <button id="nextMonth" class="month-step next" type="button" aria-label="Next month"></button>
+        <button id="nextMonth" class="month-step next" type="button" aria-label="Next month" data-l-aria="nextMonth"></button>
       </div>
       <p id="payStatus" class="pay-status" aria-live="polite"></p>
       <div id="payTotals" class="pay-totals"></div>
       <div class="sheet-actions">
-        <button id="writeSheetBtn" class="btn-primary" type="button">Update my sheet</button>
-        <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" hidden>Open in Google Sheets</a>
+        <button id="writeSheetBtn" class="btn-primary" type="button" data-l="updateSheet">Update my sheet</button>
+        <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" data-l="openSheet" hidden>Open in Google Sheets</a>
       </div>
       <ol id="payLines" class="pay-lines"></ol>
 
       <details id="settingsBox" class="settings">
-        <summary>Your details and rates</summary>
+        <summary data-l="settingsTitle">Your details and rates</summary>
         <form id="settingsForm" class="settings-form" novalidate>
-          <label class="field">Full name, as the company knows you<input name="full_name" type="text" autocomplete="name"></label>
-          <label class="field">Company email<input name="company_email" type="email" autocomplete="off" inputmode="email"></label>
+          <label class="field"><span data-l="fullName">Full name, as the company knows you</span><input name="full_name" type="text" autocomplete="name"></label>
+          <label class="field"><span data-l="companyEmail">Company email</span><input name="company_email" type="email" autocomplete="off" inputmode="email" dir="ltr"></label>
+          <label class="field"><span data-l="reportLanguage">Report language</span>
+            <span class="select-wrap"><select name="report_language">
+              <option value="he" lang="he">עברית</option>
+              <option value="en" lang="en">English</option>
+            </select></span>
+          </label>
           <div class="rates">
-            <label class="field">Warehouse, per hour (₪)<input name="rate_warehouse" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field">Event, per day (₪)<input name="rate_event" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field">Event extra hour (₪)<input name="rate_extra" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field">Night at work (₪)<input name="rate_night" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label class="field"><span data-l="rateWarehouse">Warehouse, per hour (₪)</span><input name="rate_warehouse" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label class="field"><span data-l="rateEvent">Event, per day (₪)</span><input name="rate_event" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label class="field"><span data-l="rateExtra">Event extra hour (₪)</span><input name="rate_extra" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label class="field"><span data-l="rateNight">Night at work (₪)</span><input name="rate_night" type="number" min="0" step="0.01" inputmode="decimal"></label>
           </div>
-          <p class="fine">Saved in your own pay sheet. A new rate counts for every month you haven't sent yet.</p>
+          <p class="fine" data-l="settingsFine">Saved in your own pay sheet. A new rate counts for every month you haven't sent yet.</p>
           <p class="form-error" role="alert" hidden></p>
-          <button type="submit" class="btn-primary">Save details</button>
+          <button type="submit" class="btn-primary" data-l="saveDetails">Save details</button>
         </form>
       </details>
     </div>
@@ -129,8 +139,8 @@
 
 <footer id="saveBar" class="save-bar" hidden>
   <div class="save-bar-inner">
-    <p id="statusText" class="status is-quiet">No unsaved changes</p>
-    <button id="saveBtn" class="btn-primary" type="button" disabled>Save to Calendar</button>
+    <p id="statusText" class="status is-quiet" data-l="noUnsaved">No unsaved changes</p>
+    <button id="saveBtn" class="btn-primary" type="button" data-l="saveToCalendar" disabled>Save to Calendar</button>
   </div>
 </footer>
 
@@ -140,6 +150,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

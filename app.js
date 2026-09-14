@@ -32,7 +32,47 @@ let boardSeq = 0; // bumped whenever the board is rebuilt, so responses meant fo
 let saving = false;
 
 const el = (id) => document.getElementById(id);
-const rangeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+// ---------- Language ----------
+// Each person picks the app's language on their device: English or Hebrew, the phone's language until they do.
+// The words live in i18n.js. A Hebrew page runs right to left.
+
+function pickLanguage() {
+  const saved = localStorage.getItem("sb_lang");
+  if (UI_TEXT[saved]) return saved;
+  return /^(he|iw)\b/i.test(navigator.language || "") ? "he" : "en";
+}
+
+const UI_LANG = pickLanguage();
+const L = UI_TEXT[UI_LANG];
+// Dates and money follow the app's language, never a phone set to the other one
+const LOCALE = UI_LANG === "he" ? "he-IL" : /^en\b/i.test(navigator.language || "") ? navigator.language : "en-US";
+const rangeFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric" });
+const moneyFormat = new Intl.NumberFormat(LOCALE, { style: "currency", currency: "ILS" });
+
+// index.html's words carry data-l (text), data-l-html (text with markup) or data-l-aria (a label): keys into UI_TEXT
+function applyLanguage() {
+  const root = document.documentElement;
+  root.lang = UI_LANG;
+  root.dir = UI_LANG === "he" ? "rtl" : "ltr";
+  const text = (key) => key.split(".").reduce((o, k) => o[k], L);
+  document.querySelectorAll("[data-l]").forEach((node) => (node.textContent = text(node.dataset.l)));
+  document.querySelectorAll("[data-l-html]").forEach((node) => (node.innerHTML = text(node.dataset.lHtml)));
+  document.querySelectorAll("[data-l-aria]").forEach((node) => node.setAttribute("aria-label", text(node.dataset.lAria)));
+  // The switch names the other language, in that language
+  const other = UI_LANG === "he" ? "en" : "he";
+  el("langBtn").textContent = UI_TEXT[other].langName;
+  el("langBtn").lang = other;
+}
+applyLanguage(); // before the first paint, so a Hebrew page never flashes English
+
+// The page reloads in the other language. The session survives (it's in localStorage); unsaved taps would not.
+function switchLanguage() {
+  if (!confirmDiscard()) return;
+  localStorage.setItem("sb_lang", UI_LANG === "he" ? "en" : "he");
+  if (!el("payView").hidden) sessionStorage.setItem("sb_view", "pay");
+  location.reload();
+}
 
 // ---------- Auth ----------
 
@@ -71,6 +111,7 @@ window.addEventListener("load", () => {
   el("nextMonth").addEventListener("click", () => changePayMonth(1));
   el("settingsForm").addEventListener("submit", submitSettings);
   el("writeSheetBtn").addEventListener("click", updateSheet);
+  el("langBtn").addEventListener("click", switchLanguage);
   el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) {
@@ -79,6 +120,9 @@ window.addEventListener("load", () => {
     }
   });
 
+  // A language switch made on the Pay tab lands back on it
+  if (sessionStorage.getItem("sb_view") === "pay") pendingView = "pay";
+  sessionStorage.removeItem("sb_view");
   restoreSession();
 });
 
@@ -125,11 +169,11 @@ function restoreSession() {
 
 function onTokenReceived(resp) {
   if (resp.error) {
-    showToast("Sign-in failed: " + resp.error, true);
+    showToast(L.signInFailed + resp.error, true);
     return;
   }
   if (!google.accounts.oauth2.hasGrantedAllScopes(resp, CALENDAR_SCOPE)) {
-    showToast("Calendar access wasn't granted — sign in again and allow Google Calendar", true);
+    showToast(L.noCalendarAccess, true);
     return;
   }
   const expiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
@@ -182,7 +226,7 @@ function fetchUserEmail() {
 
 function apiFetch(url, options = {}) {
   if (Date.now() > tokenExpiresAt - 5000) {
-    showToast("Session expired — please sign in again", true);
+    showToast(L.sessionExpired, true);
     resetToSignedOut();
     return Promise.reject(new Error("token expired"));
   }
@@ -191,7 +235,7 @@ function apiFetch(url, options = {}) {
   });
   return fetch(url, options).then((r) => {
     if (r.status === 401) {
-      showToast("Session expired — please sign in again", true);
+      showToast(L.sessionExpired, true);
       resetToSignedOut();
       throw new Error("unauthorized");
     }
@@ -234,7 +278,8 @@ function loadCalendars() {
       calendars.forEach((cal) => {
         const opt = document.createElement("option");
         opt.value = cal.id;
-        opt.textContent = cal.summary + (cal.primary ? " (main)" : "");
+        opt.dir = "auto"; // a calendar's name can be in either language, or an email address
+        opt.textContent = cal.summary + (cal.primary ? L.mainCalendar : "");
         select.appendChild(opt);
       });
       // The list holds real IDs, never the "primary" alias, so fall back to the calendar flagged
@@ -249,12 +294,12 @@ function loadCalendars() {
       if (calendars.length) resetBoard();
       else clearBoard();
     })
-    .catch((err) => showApiError("Couldn't load your calendars", err));
+    .catch((err) => showApiError(L.errLoadCalendars, err));
 }
 
 function createNewCalendar() {
   if (!confirmDiscard()) return;
-  const name = prompt("Name for the new calendar (e.g. Work):");
+  const name = prompt(L.newCalendarPrompt);
   if (!name) return;
   apiFetch("https://www.googleapis.com/calendar/v3/calendars", {
     method: "POST",
@@ -265,10 +310,10 @@ function createNewCalendar() {
     .then((cal) => {
       selectedCalendarId = cal.id;
       localStorage.setItem("sb_calendarId", selectedCalendarId);
-      showToast('Calendar "' + name + '" created');
+      showToast(L.calendarCreated(name));
       loadCalendars();
     })
-    .catch((err) => showApiError("Couldn't create the calendar", err));
+    .catch((err) => showApiError(L.errCreateCalendar, err));
 }
 
 // ---------- Dates ----------
@@ -288,6 +333,11 @@ function dateStr(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
+// "Monday, September 14", in the app's language
+function longDay(ds) {
+  return new Date(ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "long", month: "long", day: "numeric" });
+}
+
 function weekDates(monday) {
   const dates = [];
   for (let i = 0; i < 7; i++) {
@@ -301,7 +351,7 @@ function weekDates(monday) {
 // "This week" / "Next week" / "Last week" for nearby weeks; the rest go by their dates alone
 function weekName(monday) {
   const diff = Math.round((monday - getMonday(new Date())) / (7 * 24 * 60 * 60 * 1000));
-  return { "-1": "Last week", 0: "This week", 1: "Next week" }[diff] || "";
+  return L.weekNames[diff] || "";
 }
 
 function formatRange(from, to) {
@@ -376,11 +426,11 @@ function renderWeek(monday) {
   const error = document.createElement("p");
   error.className = "week-error";
   error.hidden = true;
-  error.textContent = "Couldn't load this week.";
+  error.textContent = L.weekLoadFailed;
   const retry = document.createElement("button");
   retry.type = "button";
   retry.className = "btn-text";
-  retry.textContent = "Try again";
+  retry.textContent = L.tryAgain;
   retry.addEventListener("click", () => loadWeeks([monday]));
   error.appendChild(retry);
   section.appendChild(error);
@@ -409,19 +459,19 @@ function renderDay(d) {
   row.className = "day" + (ds === today ? " is-today" : ds < today ? " is-past" : "");
   row.dataset.date = ds;
 
-  const longDate = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const longDate = longDay(ds);
   const label = document.createElement("button");
   label.type = "button";
   label.className = "day-label";
-  label.setAttribute("aria-label", longDate + (ds === today ? ", today" : "") + ": times, nights, expenses and Other jobs");
+  label.setAttribute("aria-label", L.dayAria(longDate, ds === today));
   label.addEventListener("click", () => openDayPanel(ds));
   label.innerHTML =
     '<span class="dow">' +
-    d.toLocaleDateString(undefined, { weekday: "short" }) +
+    L.days[d.getDay()] +
     '</span><span class="dnum">' +
     d.getDate() +
     "</span>" +
-    (ds === today ? '<span class="sr-only">Today</span>' : "");
+    (ds === today ? '<span class="sr-only">' + L.today + "</span>" : "");
   row.appendChild(label);
 
   const slots = document.createElement("div");
@@ -433,8 +483,8 @@ function renderDay(d) {
     btn.className = "tape type-" + type.toLowerCase();
     btn.dataset.type = type;
     btn.disabled = true; // until the week's shifts have loaded, so a saved one can't be added twice
-    btn.setAttribute("aria-label", type + ", " + longDate);
-    btn.innerHTML = '<span class="strip"></span><span class="tape-label">' + type + "</span>";
+    btn.setAttribute("aria-label", L.types[type] + ", " + longDate);
+    btn.innerHTML = '<span class="strip"></span><span class="tape-label">' + L.types[type] + "</span>";
     btn.addEventListener("click", () => toggleShift(ds, type));
     slots.appendChild(btn);
     dayButtons[ds][type] = btn;
@@ -462,12 +512,10 @@ function syncDay(ds) {
     btn.setAttribute("aria-pressed", String(entry.active));
   });
   // Under the tapes: real times and extras once entered, and a nudge for past shifts still missing times
-  const parts = savedShifts(ds)
-    .filter(({ event }) => isTimed(event) || ds <= dateStr(new Date()))
-    .map(({ type, event }) => shiftSummary(type, event));
-  dayMeta[ds].hidden = parts.length === 0;
-  dayMeta[ds].classList.toggle("needs-times", parts.some((p) => p.endsWith("add times")));
-  dayMeta[ds].textContent = parts.join("\n");
+  const shown = savedShifts(ds).filter(({ event }) => isTimed(event) || ds <= dateStr(new Date()));
+  dayMeta[ds].hidden = shown.length === 0;
+  dayMeta[ds].classList.toggle("needs-times", shown.some(({ event }) => !isTimed(event)));
+  dayMeta[ds].textContent = shown.map(({ type, event }) => shiftSummary(type, event)).join("\n");
 }
 
 function savedShifts(ds) {
@@ -478,25 +526,30 @@ function savedShifts(ds) {
   return list;
 }
 
-const moneyFormat = new Intl.NumberFormat("en-US", { style: "currency", currency: "ILS" });
 const clock = (d) => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+
+// How many days after its start date a timed shift ended (1 for a night shift)
+function daysLater(event) {
+  const start = new Date(event.start.dateTime);
+  const end = new Date(event.end.dateTime);
+  return Math.round((new Date(dateStr(end) + "T00:00") - new Date(dateStr(start) + "T00:00")) / 864e5);
+}
 
 // "06:00–04:00 (+1)": the (+n) says how many days later the shift ended
 function timeRange(event) {
-  const start = new Date(event.start.dateTime);
-  const end = new Date(event.end.dateTime);
-  const laterDays = Math.round((new Date(dateStr(end) + "T00:00") - new Date(dateStr(start) + "T00:00")) / 864e5);
-  return clock(start) + "–" + clock(end) + (laterDays > 0 ? " (+" + laterDays + ")" : "");
+  const later = daysLater(event);
+  return clock(new Date(event.start.dateTime)) + "–" + clock(new Date(event.end.dateTime)) + (later > 0 ? " " + L.later(later) : "");
 }
 
 function shiftSummary(type, event) {
-  if (!isTimed(event)) return type + ": add times";
-  let text = type + " " + timeRange(event);
+  const name = L.types[type];
+  if (!isTimed(event)) return L.addTimes(name);
+  let text = name + " " + timeRange(event);
   const props = privateProps(event);
   if (type === OTHER) text += ", " + moneyFormat.format(Number(props.amount) || 0);
-  if (props.slept === "1") text += ", night";
+  if (props.slept === "1") text += L.night;
   const spent = expensesOf(event).reduce((sum, x) => sum + Number(x.amount), 0);
-  if (spent) text += ", " + moneyFormat.format(spent) + " expenses";
+  if (spent) text += L.spent(moneyFormat.format(spent));
   return text;
 }
 
@@ -547,7 +600,7 @@ function loadWeeks(list) {
     .catch((err) => {
       if (seq !== boardSeq) return;
       setWeeksBusy(list, false, true);
-      showApiError("Couldn't load your shifts", err);
+      showApiError(L.errLoadShifts, err);
     });
 }
 
@@ -647,13 +700,13 @@ function openPanel(titleText) {
   title.tabIndex = -1;
   title.autofocus = true; // opening the panel lands on its title, not on Close
   title.textContent = titleText;
-  head.append(title, makeButton("Close", "btn-text", () => panel.close()));
+  head.append(title, makeButton(L.close, "btn-text", () => panel.close()));
   panel.appendChild(head);
   return panel;
 }
 
 function openDayPanel(ds) {
-  const panel = openPanel(new Date(ds + "T00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+  const panel = openPanel(longDay(ds));
   localStorage.setItem("sb_hintSeen", "1"); // they found the date button, so the hint has done its job
   el("boardHint").hidden = true;
 
@@ -661,12 +714,12 @@ function openDayPanel(ds) {
   if (!shifts.length) {
     const empty = document.createElement("p");
     empty.className = "panel-note";
-    empty.textContent = "No saved shifts on this day yet. Tap Event or Warehouse on the board and save first, or add an Other job.";
+    empty.textContent = L.noShiftsDay;
     panel.appendChild(empty);
   }
   shifts.forEach(({ type, event }) => panel.appendChild(shiftForm(ds, type, event)));
 
-  const addOther = makeButton("Add an Other job", "btn-quiet add-other", () => addOther.replaceWith(shiftForm(ds, OTHER, null)));
+  const addOther = makeButton(L.addOther, "btn-quiet add-other", () => addOther.replaceWith(shiftForm(ds, OTHER, null)));
   panel.appendChild(addOther);
   panel.showModal();
 }
@@ -682,7 +735,7 @@ function makeButton(text, className, onClick) {
 
 function formatHours(hours) {
   const minutes = Math.round(hours * 60);
-  return Math.floor(minutes / 60) + " h " + String(minutes % 60).padStart(2, "0") + " min";
+  return L.hours(Math.floor(minutes / 60), String(minutes % 60).padStart(2, "0"));
 }
 
 function shiftForm(ds, type, event) {
@@ -695,18 +748,20 @@ function shiftForm(ds, type, event) {
   form.className = "shift-form type-" + type.toLowerCase();
   form.noValidate = true; // our own messages instead of the browser's bubbles
   form.innerHTML =
-    "<h3>" + type + "</h3>" +
-    '<div class="when"><span class="when-label">Start</span><input name="startDate" type="date" aria-label="Start date"><input name="startTime" type="time" aria-label="Start time"></div>' +
-    '<div class="when"><span class="when-label">End</span><input name="endDate" type="date" aria-label="End date"><input name="endTime" type="time" aria-label="End time"></div>' +
+    "<h3>" + L.types[type] + "</h3>" +
+    '<div class="when"><span class="when-label">' + L.start + '</span><input name="startDate" type="date" aria-label="' + L.startDate +
+    '"><input name="startTime" type="time" aria-label="' + L.startTime + '"></div>' +
+    '<div class="when"><span class="when-label">' + L.end + '</span><input name="endDate" type="date" aria-label="' + L.endDate +
+    '"><input name="endTime" type="time" aria-label="' + L.endTime + '"></div>' +
     '<p class="duration" aria-live="polite"></p>' +
     (type === OTHER
-      ? '<label class="field">Amount paid (₪)<input name="amount" type="number" min="0" step="0.01" inputmode="decimal"></label>' +
-        '<label class="field">What was it? <span class="optional">(optional)</span><input name="note" type="text" maxlength="120"></label>'
+      ? '<label class="field">' + L.amountPaid + '<input name="amount" type="number" min="0" step="0.01" inputmode="decimal"></label>' +
+        '<label class="field"><span>' + L.whatWasIt + ' <span class="optional">' + L.optional + '</span></span><input name="note" type="text" maxlength="120"></label>'
       : "") +
-    (type === "Event" ? '<label class="check"><input name="slept" type="checkbox"> Slept at work (night)</label>' : "") +
-    '<fieldset class="expenses"><legend>Expenses</legend><div class="expense-list"></div></fieldset>' +
+    (type === "Event" ? '<label class="check"><input name="slept" type="checkbox"> ' + L.slept + "</label>" : "") +
+    '<fieldset class="expenses"><legend>' + L.expenses + '</legend><div class="expense-list"></div></fieldset>' +
     '<p class="form-error" role="alert" hidden></p>' +
-    '<div class="form-actions"><button type="submit" class="btn-primary">Save ' + type + "</button></div>";
+    '<div class="form-actions"><button type="submit" class="btn-primary">' + L.saveType(type) + "</button></div>";
 
   const f = form.elements;
   f.startDate.value = start ? dateStr(start) : ds;
@@ -722,13 +777,13 @@ function shiftForm(ds, type, event) {
   const list = form.querySelector(".expense-list");
   expensesOf(event || {}).forEach((x) => list.appendChild(expenseRow(x)));
   form.querySelector(".expenses").appendChild(
-    makeButton("Add an expense", "btn-text", () => list.appendChild(expenseRow({ type: "Travel", amount: "" })))
+    makeButton(L.addExpense, "btn-text", () => list.appendChild(expenseRow({ type: "Travel", amount: "" })))
   );
 
   const showDuration = () => {
     const hours = (new Date(f.endDate.value + "T" + f.endTime.value) - new Date(f.startDate.value + "T" + f.startTime.value)) / 3600000;
     form.querySelector(".duration").textContent =
-      hours > 0 ? formatHours(hours) + (type === "Event" && hours > 12 ? ", of which " + formatHours(hours - 12) + " extra" : "") : "";
+      hours > 0 ? formatHours(hours) + (type === "Event" && hours > 12 ? L.ofWhichExtra(formatHours(hours - 12)) : "") : "";
   };
   // An end time earlier than the start means the shift finished the next day (night shifts)
   const rollEnd = () => {
@@ -744,7 +799,7 @@ function shiftForm(ds, type, event) {
   showDuration();
 
   if (event && type === OTHER) {
-    form.querySelector(".form-actions").prepend(makeButton("Remove job", "btn-text", () => removeOtherJob(event)));
+    form.querySelector(".form-actions").prepend(makeButton(L.removeJob, "btn-text", () => removeOtherJob(event)));
   }
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -757,11 +812,11 @@ function expenseRow(x) {
   const row = document.createElement("div");
   row.className = "expense";
   const select = document.createElement("select");
-  select.setAttribute("aria-label", "Expense type");
+  select.setAttribute("aria-label", L.expenseType);
   EXPENSE_TYPES.forEach((t) => {
     const opt = document.createElement("option");
     opt.value = t;
-    opt.textContent = t;
+    opt.textContent = L.expenseTypes[t];
     select.appendChild(opt);
   });
   select.value = EXPENSE_TYPES.includes(x.type) ? x.type : "Other";
@@ -771,9 +826,9 @@ function expenseRow(x) {
   amount.step = "0.01";
   amount.inputMode = "decimal";
   amount.placeholder = "₪";
-  amount.setAttribute("aria-label", "Expense amount in shekels");
+  amount.setAttribute("aria-label", L.expenseAmount);
   amount.value = x.amount;
-  row.append(select, amount, makeButton("Remove", "btn-text", () => row.remove()));
+  row.append(select, amount, makeButton(L.remove, "btn-text", () => row.remove()));
   return row;
 }
 
@@ -786,8 +841,8 @@ function submitShiftForm(form, type, event) {
     p.textContent = msg;
     p.hidden = false;
   };
-  if (!f.startTime.value || !f.endTime.value || isNaN(start) || isNaN(end)) return fail("Enter the start and end time.");
-  if (end <= start) return fail("The end has to be after the start.");
+  if (!f.startTime.value || !f.endTime.value || isNaN(start) || isNaN(end)) return fail(L.errTimes);
+  if (end <= start) return fail(L.errEndAfterStart);
 
   const expenses = [...form.querySelectorAll(".expense")]
     .map((row) => ({ type: row.querySelector("select").value, amount: Number(row.querySelector("input").value) }))
@@ -797,7 +852,7 @@ function submitShiftForm(form, type, event) {
   let summary;
   if (type === OTHER) {
     const amount = Number(f.amount.value);
-    if (!(amount > 0)) return fail("Enter how much this job paid.");
+    if (!(amount > 0)) return fail(L.errAmount);
     extras.amount = String(amount);
     extras.note = f.note.value.trim();
     summary = extras.note ? OTHER + " – " + extras.note : OTHER;
@@ -805,20 +860,20 @@ function submitShiftForm(form, type, event) {
 
   const btn = form.querySelector('[type="submit"]');
   btn.disabled = true;
-  btn.textContent = "Saving…";
+  btn.textContent = L.saving;
   saveShiftEvent(event && event.id, { type, start, end, extras, summary })
     .then(() => {
       // In the missing-times list the other shifts stay open; everywhere else the panel is done
       const panel = el("dayPanel");
       form.remove();
       if (!form.dataset.keepOpen || !panel.querySelector("form")) panel.close();
-      showToast(type + " saved to Google Calendar");
+      showToast(L.typeSaved(type));
       refreshAfterShiftChange();
     })
     .catch((err) => {
       btn.disabled = false;
-      btn.textContent = "Save " + type;
-      if (accessToken) fail("Couldn't save: " + err.message);
+      btn.textContent = L.saveType(type);
+      if (accessToken) fail(L.couldntSave + err.message);
     });
 }
 
@@ -826,10 +881,10 @@ function removeOtherJob(event) {
   deleteEvent(event.id)
     .then(() => {
       el("dayPanel").close();
-      showToast("Other job removed");
+      showToast(L.jobRemoved);
       refreshAfterShiftChange();
     })
-    .catch((err) => showApiError("Couldn't remove the job", err));
+    .catch((err) => showApiError(L.errRemoveJob, err));
 }
 
 function refreshAfterShiftChange() {
@@ -842,18 +897,9 @@ function refreshAfterShiftChange() {
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
-// Settings tab: A = label, B = value, C = key. Values are found by key, so rows moved by hand still work.
-const SETTINGS_ROWS = [
-  ["ShiftBoard settings · הגדרות"],
-  [],
-  ["Full name · שם מלא", "full_name"],
-  ["Company email · מייל החברה", "company_email"],
-  [],
-  ["Warehouse, per hour (₪) · מחסן, לשעה", "rate_warehouse"],
-  ["Event, per day (₪) · אירוע, ליום", "rate_event"],
-  ["Event extra hour (₪) · שעה נוספת באירוע", "rate_extra"],
-  ["Night at work (₪) · לינה", "rate_night"],
-];
+// Settings tab: A = label (in the report's language), B = value, C = key (a hidden column). Values are found by
+// key, so rows moved by hand still work. "" is an empty row.
+const SETTINGS_ROWS = ["title", "", "full_name", "company_email", "report_language", "", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
 
 let sheetId = localStorage.getItem("sb_sheetId");
 let settings = null; // { full_name, company_email, rate_* } as last read from or saved to the sheet
@@ -893,9 +939,44 @@ function createSheet() {
     );
 }
 
+// The tab is in the report's language, with the language itself written by name ("עברית" / "English")
 function writeSettingsTab(id, values) {
-  const rows = SETTINGS_ROWS.map(([label, key]) => (key ? [label, values[key] == null ? "" : values[key], key] : label ? [label] : []));
-  return jsonRequest(SHEETS_API + "/" + id + "/values/Settings!A1:C" + rows.length + "?valueInputOption=RAW", "PUT", { values: rows });
+  const T = REPORT_TEXT[reportLanguage(values)];
+  const shown = Object.assign({}, values, { report_language: T.langName });
+  const rows = SETTINGS_ROWS.map((key) =>
+    key === "title" ? [T.settings.title] : key ? [T.settings[key], shown[key] == null ? "" : shown[key], key] : []
+  );
+  return jsonRequest(SHEETS_API + "/" + id + "/values/Settings!A1:C" + rows.length + "?valueInputOption=RAW", "PUT", { values: rows })
+    .then(() => jsonGet(SHEETS_API + "/" + id + "?fields=sheets.properties(sheetId,title)"))
+    .then((meta) => {
+      const tab = (meta.sheets || []).find((s) => s.properties.title === "Settings");
+      if (!tab) return;
+      const tabId = tab.properties.sheetId;
+      const column = (i, properties, fields) => ({
+        updateDimensionProperties: { range: { sheetId: tabId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 }, properties, fields },
+      });
+      return jsonRequest(SHEETS_API + "/" + id + ":batchUpdate", "POST", {
+        requests: [
+          { updateSheetProperties: { properties: { sheetId: tabId, rightToLeft: T === REPORT_TEXT.he }, fields: "rightToLeft" } },
+          {
+            repeatCell: {
+              range: { sheetId: tabId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+              cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } },
+              fields: "userEnteredFormat.textFormat",
+            },
+          },
+          column(0, { pixelSize: 240 }, "pixelSize"),
+          column(1, { pixelSize: 240 }, "pixelSize"),
+          column(2, { hiddenByUser: true }, "hiddenByUser"), // the keys, for the app only
+        ],
+      });
+    });
+}
+
+// "en", "English" or "אנגלית" mean English; anything else, blank included, is Hebrew (the usual report)
+function reportLanguage(s) {
+  const v = String((s && s.report_language) || "").trim().toLowerCase();
+  return v === "en" || v.startsWith("english") || v === "אנגלית" ? "en" : "he";
 }
 
 function readSettingsTab() {
@@ -924,6 +1005,7 @@ function loadSettings() {
       (data.values || []).forEach((row) => {
         if (row[2]) settings[row[2]] = row[1] == null ? "" : String(row[1]).trim();
       });
+      settings.report_language = reportLanguage(settings);
       return settings;
     });
 }
@@ -964,7 +1046,8 @@ function shiftPay(type, event, rates) {
   pay = round2(pay);
   const night = type === "Event" && props.slept === "1" ? rates.night : 0;
   const expenses = round2(expensesOf(event).reduce((sum, x) => sum + Number(x.amount), 0));
-  return { hours, extraHours, pay, night, expenses, total: round2(pay + night + expenses), missingTimes: hours === null };
+  // Salary and expenses stay apart: expenses are paid back already taxed, the salary is taxed on payment
+  return { hours, extraHours, pay, night, expenses, salary: round2(pay + night), missingTimes: hours === null };
 }
 
 // Every shift that starts in the given month (0-based), in start order, with its pay
@@ -984,7 +1067,7 @@ function monthTotals(lines) {
     other: { count: 0, pay: 0 },
     nights: { count: 0, pay: 0 },
     expenses: 0,
-    total: 0,
+    salary: 0,
     missingTimes: 0,
   };
   lines.forEach((line) => {
@@ -998,7 +1081,7 @@ function monthTotals(lines) {
       totals.nights.pay = round2(totals.nights.pay + line.night);
     }
     totals.expenses = round2(totals.expenses + line.expenses);
-    totals.total = round2(totals.total + line.total);
+    totals.salary = round2(totals.salary + line.salary);
     if (line.missingTimes) totals.missingTimes++;
   });
   return totals;
@@ -1006,38 +1089,49 @@ function monthTotals(lines) {
 
 // ---------- The month's table (written to the pay sheet, and later the PDF) ----------
 
-const TYPE_LABELS = { Event: "Event · אירוע", Warehouse: "Warehouse · מחסן", Other: "Other · אחר" };
-const EXPENSE_LABELS = { Travel: "Travel · נסיעות", Food: "Food · אוכל", Hotel: "Hotel · מלון", Other: "Other · אחר" };
-const DAY_LABELS = ["Sun · א׳", "Mon · ב׳", "Tue · ג׳", "Wed · ד׳", "Thu · ה׳", "Fri · ו׳", "Sat · ש׳"];
-const TABLE_HEADINGS = [
-  "Date · תאריך", "Day · יום", "Type · סוג", "Start · התחלה", "End · סיום", "Hours · שעות",
-  "Extra hours · שעות נוספות", "Pay · שכר", "Night · לינה", "Expenses · הוצאות", "Total · סה״כ", "Details · פירוט",
-];
-const TABLE_HEAD_ROWS = 6; // title, month, name, rates, blank, headings
-
-// A small header, one row per shift, then the totals. Plain values rather than formulas, so the sheet always
-// matches the app; money and hours stay numbers so Sheets can format and add them.
-function monthTableRows(monthDate, lines, totals, rates, s) {
+// The report (its words are REPORT_TEXT in i18n.js), top to bottom: title; name, month and year; the total to pay (gross salary) and, apart from it,
+// the expenses reimbursement; a quiet hours summary; then one row per shift and a totals row. Plain values, not
+// formulas, so the sheet always matches the app. `at` says where each part starts, for the formatting.
+function monthTable(monthDate, lines, totals, s, lang) {
+  const T = REPORT_TEXT[lang] || REPORT_TEXT.he;
   const pad = (n) => String(n).padStart(2, "0");
-  const rows = [
-    ["Shift report · דוח משמרות"],
-    ["Month · חודש", monthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })],
-    ["Name · שם", s.full_name || ""],
-    ["Rates · תעריפים", "Warehouse ₪" + rates.warehouse + "/h · Event ₪" + rates.event + " · Extra ₪" + rates.extra + "/h · Night ₪" + rates.night],
-    [],
-    TABLE_HEADINGS,
-  ];
+  const monthName = monthDate.toLocaleDateString(T.locale, { month: "long" });
+  const year = String(monthDate.getFullYear());
+  const at = {};
+  const rows = [];
+  at.title = rows.push([T.title + " — " + monthName + " " + year]) - 1;
+  at.info = rows.push([T.name, "", "", s.full_name || ""]) - 1;
+  rows.push([T.month, "", "", monthName]);
+  rows.push([T.year, "", "", year]);
+  rows.push([]);
+  at.salary = rows.push([T.salary, "", "", totals.salary]) - 1;
+  at.expenses = rows.push([T.expenses, "", "", totals.expenses]) - 1;
+  at.note = totals.missingTimes ? rows.push([T.notFinal(totals.missingTimes)]) - 1 : -1;
+  rows.push([]);
+  at.hoursTitle = rows.push([T.hoursTitle]) - 1;
+  if (totals.warehouse.count) rows.push([T.warehouseLine(totals.warehouse.count, round2(totals.warehouse.hours))]);
+  if (totals.event.count) rows.push([T.eventLine(totals.event.count, round2(totals.event.extraHours))]);
+  if (totals.nights.count) rows.push([T.nightsLine(totals.nights.count)]);
+  if (totals.other.count) rows.push([T.otherLine(totals.other.count)]);
+  at.hoursEnd = rows.length;
+  rows.push([]);
+  at.shiftsTitle = rows.push([T.shifts]) - 1;
+  at.headings = rows.push(T.headings) - 1;
+  at.lines = rows.length;
   lines.forEach((line) => {
     const day = new Date(line.ds + "T00:00");
-    const [startText, endText] = line.missingTimes ? ["", ""] : timeRange(line.event).split("–");
+    const later = line.missingTimes ? 0 : daysLater(line.event);
+    const startText = line.missingTimes ? "" : clock(new Date(line.event.start.dateTime));
+    const endText = line.missingTimes ? "" : clock(new Date(line.event.end.dateTime)) + (later > 0 ? " " + T.later(later) : "");
     const details = [];
-    if (line.type === OTHER && privateProps(line.event).note) details.push(privateProps(line.event).note);
-    expensesOf(line.event).forEach((x) => details.push((EXPENSE_LABELS[x.type] || x.type) + " ₪" + x.amount));
-    if (line.missingTimes) details.push("No times yet · אין שעות");
+    const note = privateProps(line.event).note;
+    if (line.type === OTHER && note) details.push(note);
+    expensesOf(line.event).forEach((x) => details.push((T.expenseTypes[x.type] || x.type) + " ₪" + x.amount));
+    if (line.missingTimes) details.push(T.noTimes);
     rows.push([
       pad(day.getDate()) + "/" + pad(day.getMonth() + 1) + "/" + day.getFullYear(),
-      DAY_LABELS[day.getDay()],
-      TYPE_LABELS[line.type],
+      T.days[day.getDay()],
+      T.types[line.type],
       startText,
       endText,
       line.hours === null ? "" : round2(line.hours),
@@ -1045,30 +1139,39 @@ function monthTableRows(monthDate, lines, totals, rates, s) {
       line.pay,
       line.night || "",
       line.expenses || "",
-      line.total,
       details.join(", "),
     ]);
   });
-  // Summary amounts sit in the Total column
-  const summary = (label, detail, amount) => [label, detail, "", "", "", "", "", "", "", "", amount];
-  rows.push([], ["Summary · סיכום"]);
-  if (totals.warehouse.count) rows.push(summary("Warehouse · מחסן", totals.warehouse.count + " shifts · " + round2(totals.warehouse.hours) + " h", totals.warehouse.pay));
-  if (totals.event.count) rows.push(summary("Event · אירוע", totals.event.count + " days · " + round2(totals.event.extraHours) + " extra h", totals.event.pay));
-  if (totals.nights.count) rows.push(summary("Nights · לינות", totals.nights.count + " nights", totals.nights.pay));
-  if (totals.other.count) rows.push(summary("Other · אחר", totals.other.count + " jobs", totals.other.pay));
-  if (totals.expenses) rows.push(summary("Expenses · הוצאות", "", totals.expenses));
-  rows.push(summary("Total to pay · סה״כ לתשלום", "", totals.total));
-  return rows;
+  // A totals row under the shifts, so each column can be checked at a glance
+  const sum = (key) => round2(lines.reduce((acc, line) => acc + (line[key] || 0), 0));
+  at.sum = rows.push([T.total, "", "", "", "", sum("hours"), sum("extraHours"), sum("pay"), sum("night"), sum("expenses"), ""]) - 1;
+  return { rows, at, lines, rtl: T === REPORT_TEXT.he };
 }
 
 // ---------- Writing the month's tab into the pay sheet ----------
 
 const TABLE_KEY = "shiftboard_table"; // hidden per-tab note of what the app last wrote, to spot hand edits
-const COLUMN_WIDTHS = [100, 90, 150, 70, 100, 70, 120, 100, 90, 100, 110, 300];
+// Wide enough for every value at 10pt; headings and Details wrap instead of being cut off
+const COLUMN_WIDTHS = [100, 90, 130, 80, 100, 80, 110, 110, 100, 110, 320];
+// Sheet colours (0–1 RGB), matching the app: ink bands, blue Event, orange Warehouse, neutral Other
+const SHEET_COLORS = {
+  ink: { red: 0.11, green: 0.14, blue: 0.19 },
+  white: { red: 1, green: 1, blue: 1 },
+  label: { red: 0.33, green: 0.37, blue: 0.44 },
+  heading: { red: 0.89, green: 0.91, blue: 0.94 },
+  band: { red: 0.96, green: 0.97, blue: 0.98 },
+  line: { red: 0.82, green: 0.85, blue: 0.89 },
+  missing: { red: 0.72, green: 0.15, blue: 0.12 },
+  Event: { red: 0.85, green: 0.9, blue: 0.98 },
+  Warehouse: { red: 0.99, green: 0.89, blue: 0.78 },
+  Other: { red: 0.94, green: 0.92, blue: 0.84 },
+};
 let payData = { lines: [], totals: null }; // exactly what the Pay view shows, so the sheet gets the same
 
 const jsonGet = (url) => apiFetch(url).then((r) => r.json());
-const monthTabTitle = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + " " + d.toLocaleDateString("en-US", { month: "long" });
+// Tabs are named "2026-09" whatever the report's language; an earlier version named them "2026-09 September"
+const monthTabTitle = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+const legacyTabTitle = (d) => monthTabTitle(d) + " " + d.toLocaleDateString("en-US", { month: "long" });
 
 // A fingerprint of a table's values; trailing empty cells and rows don't count (Sheets drops them)
 function tableHash(rows) {
@@ -1084,18 +1187,20 @@ function tableHash(rows) {
   return (h >>> 0).toString(16);
 }
 
-// Writes the Pay view's month into its own tab ("2026-09 September"). If the tab was changed by hand since the
-// app last wrote it, asks first. Resolves with the tab's id, or null when the user chose to keep their edits.
+// Writes the Pay view's month into its own tab ("2026-09"), in the report language. If the tab was changed by hand
+// since the app last wrote it, asks first. Resolves with the tab's id, or null when the user chose to keep their edits.
 function writeMonthTab() {
   const title = monthTabTitle(payMonth);
   const quoted = encodeURIComponent("'" + title + "'");
-  const rows = monthTableRows(payMonth, payData.lines, payData.totals || monthTotals([]), ratesFrom(settings), settings);
+  const table = monthTable(payMonth, payData.lines, payData.totals || monthTotals([]), settings, reportLanguage(settings));
+  const rows = table.rows;
   let tabId;
   let note = null;
   return ensureSheet()
     .then((id) => jsonGet(SHEETS_API + "/" + id + "?fields=sheets(properties(sheetId,title),developerMetadata(metadataId,metadataKey,metadataValue))"))
     .then((meta) => {
-      const tab = (meta.sheets || []).find((s) => s.properties.title === title);
+      const tabs = meta.sheets || [];
+      const tab = tabs.find((s) => s.properties.title === title) || tabs.find((s) => s.properties.title === legacyTabTitle(payMonth));
       if (!tab) {
         return jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [{ addSheet: { properties: { title } } }] }).then((res) => {
           tabId = res.replies[0].addSheet.properties.sheetId;
@@ -1104,11 +1209,18 @@ function writeMonthTab() {
       }
       tabId = tab.properties.sheetId;
       note = (tab.developerMetadata || []).find((m) => m.metadataKey === TABLE_KEY) || null;
-      return jsonGet(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1:L500?valueRenderOption=UNFORMATTED_VALUE").then(
-        (data) =>
-          (note && note.metadataValue === tableHash(data.values || [])) ||
-          confirm("The " + title.slice(8) + " tab in your pay sheet was changed by hand. Replace it with the app's version?")
-      );
+      // An older "2026-09 September" tab is renamed, so the month never ends up with two tabs
+      const renamed =
+        tab.properties.title === title
+          ? Promise.resolve()
+          : jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [{ updateSheetProperties: { properties: { sheetId: tabId, title }, fields: "title" } }] });
+      return renamed
+        .then(() => jsonGet(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1:Z500?valueRenderOption=UNFORMATTED_VALUE"))
+        .then(
+          (data) =>
+            (note && note.metadataValue === tableHash(data.values || [])) ||
+            confirm(L.handEdited(title))
+        );
     })
     .then((go) => {
       if (!go) return null;
@@ -1118,53 +1230,108 @@ function writeMonthTab() {
         : { createDeveloperMetadata: { developerMetadata: { metadataKey: TABLE_KEY, metadataValue: hash, location: { sheetId: tabId }, visibility: "DOCUMENT" } } };
       return jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + ":clear", "POST", {})
         .then(() => jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1?valueInputOption=RAW", "PUT", { values: rows }))
-        .then(() => jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: tableFormatRequests(tabId, rows.length).concat(noteRequest) }))
+        .then(() => jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: tableFormatRequests(tabId, table).concat(noteRequest) }))
         .then(() => tabId);
     });
 }
 
-function tableFormatRequests(tabId, rowCount) {
+function tableFormatRequests(tabId, { rows, at, lines, rtl }) {
+  const C = SHEET_COLORS;
+  const W = COLUMN_WIDTHS.length; // columns A–K
   const range = (r1, r2, c1, c2) => ({ sheetId: tabId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 });
-  const format = (rng, userEnteredFormat, fields) => ({ repeatCell: { range: rng, cell: { userEnteredFormat }, fields: "userEnteredFormat(" + fields + ")" } });
-  const head = TABLE_HEAD_ROWS;
-  return [
-    { repeatCell: { range: range(0, 500, 0, 12), cell: {}, fields: "userEnteredFormat" } }, // drop formats a longer table left behind
-    format(range(0, 1, 0, 1), { textFormat: { bold: true, fontSize: 14 } }, "textFormat"),
-    format(range(1, 4, 0, 1), { textFormat: { bold: true } }, "textFormat"),
-    format(range(head - 1, head, 0, 12), { textFormat: { bold: true }, backgroundColor: { red: 0.92, green: 0.93, blue: 0.95 } }, "textFormat,backgroundColor"),
-    format(range(head, rowCount, 5, 7), { numberFormat: { type: "NUMBER", pattern: "0.00" } }, "numberFormat"),
-    format(range(head, rowCount, 7, 11), { numberFormat: { type: "CURRENCY", pattern: "₪#,##0.00" } }, "numberFormat"),
-    format(range(rowCount - 1, rowCount, 0, 12), { textFormat: { bold: true } }, "textFormat"),
-    { updateSheetProperties: { properties: { sheetId: tabId, gridProperties: { frozenRowCount: head } }, fields: "gridProperties.frozenRowCount" } },
-  ].concat(
-    COLUMN_WIDTHS.map((px, i) => ({
-      updateDimensionProperties: { range: { sheetId: tabId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: "pixelSize" },
-    }))
+  const cells = (rng, format, fields) => ({ repeatCell: { range: rng, cell: { userEnteredFormat: format }, fields: "userEnteredFormat(" + fields + ")" } });
+  const merge = (r, c1, c2) => ({ mergeCells: { range: range(r, r + 1, c1, c2), mergeType: "MERGE_ALL" } });
+  const font = (color, bold, size) => ({ foregroundColor: color, bold: !!bold, fontSize: size || 10 });
+  const fill = (r, bg, fg, bold, size) => cells(range(r, r + 1, 0, W), { backgroundColor: bg, textFormat: font(fg, bold, size) }, "backgroundColor,textFormat");
+  const width = (i, px) => ({ updateDimensionProperties: { range: { sheetId: tabId, dimension: "COLUMNS", startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: "pixelSize" } });
+  const height = (r, px) => ({ updateDimensionProperties: { range: { sheetId: tabId, dimension: "ROWS", startIndex: r, endIndex: r + 1 }, properties: { pixelSize: px }, fields: "pixelSize" } });
+  const thin = { style: "SOLID", color: C.line };
+  const edge = { style: "SOLID_MEDIUM", color: C.ink };
+  const money = { numberFormat: { type: "CURRENCY", pattern: "₪#,##0.00" } };
+
+  const req = [
+    { unmergeCells: { range: range(0, 500, 0, 26) } }, // earlier versions of the tab leave merges and formats behind
+    { repeatCell: { range: range(0, 500, 0, 26), cell: {}, fields: "userEnteredFormat" } },
+    { updateSheetProperties: { properties: { sheetId: tabId, rightToLeft: !!rtl, gridProperties: { frozenRowCount: 0 } }, fields: "rightToLeft,gridProperties.frozenRowCount" } },
+    cells(range(0, rows.length, 0, W), { verticalAlignment: "MIDDLE", textFormat: font(C.ink) }, "verticalAlignment,textFormat"),
+    merge(at.title, 0, W),
+    fill(at.title, C.ink, C.white, true, 15),
+  ];
+  // Name, month and year: a label across A:C, the value across the rest
+  for (let r = at.info; r < at.info + 3; r++) {
+    req.push(merge(r, 0, 3), merge(r, 3, W), cells(range(r, r + 1, 0, 3), { textFormat: font(C.label, true) }, "textFormat"));
+  }
+  // What to pay: the gross salary in an ink band, the expenses reimbursement on its own lighter band. The amounts
+  // sit right after their labels like the name, month and year (Sheets would push numbers to the far edge).
+  req.push(
+    merge(at.salary, 0, 3),
+    merge(at.salary, 3, W),
+    fill(at.salary, C.ink, C.white, true, 13),
+    merge(at.expenses, 0, 3),
+    merge(at.expenses, 3, W),
+    fill(at.expenses, C.heading, C.ink, true, 12),
+    cells(range(at.salary, at.expenses + 1, 3, 4), Object.assign({ horizontalAlignment: rtl ? "RIGHT" : "LEFT" }, money), "horizontalAlignment,numberFormat")
   );
+  if (at.note >= 0) req.push(merge(at.note, 0, W), cells(range(at.note, at.note + 1, 0, W), { textFormat: font(C.missing, true) }, "textFormat"));
+  // The hours summary: small and grey, there when wanted
+  for (let r = at.hoursTitle; r < at.hoursEnd; r++) {
+    req.push(merge(r, 0, W), cells(range(r, r + 1, 0, W), { textFormat: font(C.label, r === at.hoursTitle, 9) }, "textFormat"));
+  }
+  // Shifts: an ink band, wrapped headings, striped rows with each type in its own colour, then the totals row
+  req.push(
+    merge(at.shiftsTitle, 0, W),
+    fill(at.shiftsTitle, C.ink, C.white, true, 12),
+    cells(range(at.headings, at.headings + 1, 0, W), { backgroundColor: C.heading, textFormat: font(C.ink, true), wrapStrategy: "WRAP", horizontalAlignment: "CENTER" },
+      "backgroundColor,textFormat,wrapStrategy,horizontalAlignment")
+  );
+  lines.forEach((line, i) => {
+    const r = at.lines + i;
+    if (i % 2) req.push(cells(range(r, r + 1, 0, W), { backgroundColor: C.band }, "backgroundColor"));
+    req.push(cells(range(r, r + 1, 2, 3), { backgroundColor: C[line.type], textFormat: font(C.ink, true) }, "backgroundColor,textFormat"));
+    if (line.missingTimes) req.push(cells(range(r, r + 1, W - 1, W), { textFormat: font(C.missing, true) }, "textFormat"));
+  });
+  req.push(
+    cells(range(at.lines, at.sum + 1, 5, 7), { numberFormat: { type: "NUMBER", pattern: "0.00" } }, "numberFormat"),
+    cells(range(at.lines, at.sum + 1, 7, 10), money, "numberFormat"),
+    cells(range(at.lines, at.sum + 1, W - 1, W), { wrapStrategy: "WRAP" }, "wrapStrategy"),
+    fill(at.sum, C.heading, C.ink, true),
+    { updateBorders: { range: range(at.headings, at.sum + 1, 0, W), top: edge, bottom: edge, left: edge, right: edge, innerHorizontal: thin, innerVertical: thin } }
+  );
+  COLUMN_WIDTHS.forEach((px, i) => req.push(width(i, px)));
+  req.push(width(W, 100)); // the previous layout's 12th column, back to normal
+  // Rows grow to fit wrapped text; the bands get a little extra room
+  req.push(
+    { autoResizeDimensions: { dimensions: { sheetId: tabId, dimension: "ROWS", startIndex: 0, endIndex: rows.length } } },
+    height(at.title, 40),
+    height(at.salary, 32),
+    height(at.expenses, 28),
+    height(at.shiftsTitle, 30)
+  );
+  return req;
 }
 
 function updateSheet() {
   const btn = el("writeSheetBtn");
   btn.disabled = true;
-  btn.textContent = "Updating…";
+  btn.textContent = L.updating;
   writeMonthTab()
     .then((tabId) => {
       if (tabId === null) return;
       const link = el("openSheetLink");
       link.href = "https://docs.google.com/spreadsheets/d/" + sheetId + "/edit#gid=" + tabId;
       link.hidden = false;
-      showToast(monthTabTitle(payMonth).slice(8) + " is up to date in your pay sheet");
+      showToast(L.upToDate(payMonth.toLocaleDateString(LOCALE, { month: "long", year: "numeric" })));
     })
-    .catch((err) => showApiError("Couldn't update your pay sheet", err))
+    .catch((err) => showApiError(L.errUpdateSheet, err))
     .finally(() => {
       btn.disabled = false;
-      btn.textContent = "Update my sheet";
+      btn.textContent = L.updateSheet;
     });
 }
 
 // ---------- Pay view ----------
 
-const SETTING_KEYS = ["full_name", "company_email", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+const SETTING_KEYS = ["full_name", "company_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
 let payMonth = null; // the 1st of the month shown on the Pay view
 let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
 
@@ -1188,7 +1355,7 @@ function openPayView() {
     const now = new Date();
     payMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   }
-  el("payStatus").textContent = "Opening your pay sheet…";
+  el("payStatus").textContent = L.openingSheet;
   (settings ? Promise.resolve(settings) : loadSettings())
     .then((s) => {
       fillSettingsForm(s);
@@ -1196,13 +1363,14 @@ function openPayView() {
     })
     .catch((err) => {
       el("payStatus").textContent = "";
-      showApiError("Couldn't open your pay sheet", err);
+      showApiError(L.errOpenSheet, err);
     });
 }
 
 function fillSettingsForm(s) {
   const f = el("settingsForm").elements;
   SETTING_KEYS.forEach((key) => (f[key].value = s[key] || ""));
+  f.report_language.value = reportLanguage(s);
   const r = ratesFrom(s);
   el("settingsBox").open = !(s.full_name && r.warehouse && r.event); // stays open until the basics are in
 }
@@ -1217,18 +1385,18 @@ function submitSettings(e) {
     error.textContent = msg;
     error.hidden = false;
   };
-  if (!values.full_name) return fail("Enter your full name as the company knows it.");
-  if (values.company_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.company_email)) return fail("That email address doesn't look right.");
+  if (!values.full_name) return fail(L.errFullName);
+  if (values.company_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.company_email)) return fail(L.errEmail);
   error.hidden = true;
   const btn = form.querySelector('[type="submit"]');
   btn.disabled = true;
   saveSettings(values)
     .then(() => {
-      showToast("Saved to your pay sheet");
+      showToast(L.savedToSheet);
       el("settingsBox").open = false;
       renderPayMonth();
     })
-    .catch((err) => showApiError("Couldn't save your details", err))
+    .catch((err) => showApiError(L.errSaveDetails, err))
     .finally(() => (btn.disabled = false));
 }
 
@@ -1244,8 +1412,8 @@ function renderPayMonth() {
   const seq = ++payLoadSeq;
   const year = payMonth.getFullYear();
   const month = payMonth.getMonth();
-  el("monthTitle").textContent = payMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  el("payStatus").textContent = "Loading this month's shifts…";
+  el("monthTitle").textContent = payMonth.toLocaleDateString(LOCALE, { month: "long", year: "numeric" });
+  el("payStatus").textContent = L.loadingMonth;
   el("writeSheetBtn").disabled = true; // until this month's shifts are in, so the sheet can't get another month's
   el("openSheetLink").hidden = true;
   // Up to a day into next month, so a shift starting late on the last day is included
@@ -1261,17 +1429,16 @@ function renderPayMonth() {
       renderPayTotals(lines.length ? totals : null);
       renderPayLines(lines);
     })
-    .catch((err) => showApiError("Couldn't load this month", err));
+    .catch((err) => showApiError(L.errLoadMonth, err));
 }
 
 function renderPayStatus(lines, totals, rates) {
   const status = el("payStatus");
   status.classList.toggle("needs-times", totals.missingTimes > 0);
-  if (!rates.warehouse && !rates.event) status.textContent = "Add your rates below to see your pay.";
-  else if (!lines.length) status.textContent = "No shifts this month.";
-  else if (totals.missingTimes === 1) status.textContent = "1 shift has no times yet, so this total isn't final.";
-  else if (totals.missingTimes) status.textContent = totals.missingTimes + " shifts have no times yet, so this total isn't final.";
-  else status.textContent = "Every shift has its times.";
+  if (!rates.warehouse && !rates.event) status.textContent = L.addRates;
+  else if (!lines.length) status.textContent = L.noShiftsMonth;
+  else if (totals.missingTimes) status.textContent = L.notFinal(totals.missingTimes);
+  else status.textContent = L.allTimed;
 }
 
 function renderPayTotals(totals) {
@@ -1279,16 +1446,17 @@ function renderPayTotals(totals) {
   box.innerHTML = "";
   if (!totals) return;
   const money = (n) => moneyFormat.format(n);
-  const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+  const { warehouse, event, nights, other } = totals;
   const rows = [
-    ["Warehouse", totals.warehouse.count, plural(totals.warehouse.count, "shift", "shifts") + " · " + formatHours(totals.warehouse.hours) + " · " + money(totals.warehouse.pay)],
-    ["Event", totals.event.count, plural(totals.event.count, "day", "days") + (totals.event.extraHours ? " · " + formatHours(totals.event.extraHours) + " extra" : "") + " · " + money(totals.event.pay)],
-    ["Nights", totals.nights.count, plural(totals.nights.count, "night", "nights") + " · " + money(totals.nights.pay)],
-    ["Other", totals.other.count, plural(totals.other.count, "job", "jobs") + " · " + money(totals.other.pay)],
-    ["Expenses", totals.expenses, money(totals.expenses)],
+    [L.types.Warehouse, warehouse.count, L.countShifts(warehouse.count) + " · " + formatHours(warehouse.hours) + " · " + money(warehouse.pay)],
+    [L.types.Event, event.count, L.countDays(event.count) + (event.extraHours ? " · " + L.extra(formatHours(event.extraHours)) : "") + " · " + money(event.pay)],
+    [L.nights, nights.count, L.countNights(nights.count) + " · " + money(nights.pay)],
+    [L.types.Other, other.count, L.countJobs(other.count) + " · " + money(other.pay)],
   ];
+  // Salary first, the expenses reimbursement apart from it; the per-type breakdown stays quiet underneath
   box.innerHTML =
-    '<p class="total-line"><span>Total to pay</span><strong>' + money(totals.total) + "</strong></p>" +
+    '<p class="total-line"><span>' + L.totalToPay + " <small>" + L.grossSalary + "</small></span><strong>" + money(totals.salary) + "</strong></p>" +
+    '<p class="total-line reimburse"><span>' + L.reimbursement + "</span><strong>" + money(totals.expenses) + "</strong></p>" +
     '<dl class="total-breakdown">' +
     rows.filter((row) => row[1]).map((row) => "<div><dt>" + row[0] + "</dt><dd>" + row[2] + "</dd></div>").join("") +
     "</dl>";
@@ -1303,10 +1471,10 @@ function renderPayLines(lines) {
     btn.type = "button";
     btn.className = "pay-line type-" + line.type.toLowerCase();
     const parts = [
-      ["pay-type", line.type],
+      ["pay-type", L.types[line.type]],
       ["pay-when", lineWhen(line)],
       ["pay-detail" + (line.missingTimes ? " needs-times" : ""), lineDetail(line)],
-      ["pay-amount", line.missingTimes && line.type !== "Event" ? "–" : moneyFormat.format(line.total)],
+      ["pay-amount", line.missingTimes && line.type !== "Event" ? "–" : moneyFormat.format(line.salary)],
     ];
     parts.forEach(([className, text]) => {
       const span = document.createElement("span");
@@ -1315,7 +1483,7 @@ function renderPayLines(lines) {
       btn.appendChild(span);
     });
     btn.addEventListener("click", () => {
-      const panel = openPanel(new Date(line.ds + "T00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+      const panel = openPanel(longDay(line.ds));
       panel.appendChild(shiftForm(line.ds, line.type, line.event));
       panel.showModal();
     });
@@ -1325,16 +1493,16 @@ function renderPayLines(lines) {
 }
 
 function lineWhen(line) {
-  const day = new Date(line.ds + "T00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const day = new Date(line.ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" });
   return line.missingTimes ? day : day + " · " + timeRange(line.event);
 }
 
 function lineDetail(line) {
-  if (line.missingTimes) return "No times yet";
+  if (line.missingTimes) return L.noTimes;
   const parts = [formatHours(line.hours)];
-  if (line.extraHours) parts.push(formatHours(line.extraHours) + " extra");
-  if (line.night) parts.push("night " + moneyFormat.format(line.night));
-  if (line.expenses) parts.push("expenses " + moneyFormat.format(line.expenses));
+  if (line.extraHours) parts.push(L.extra(formatHours(line.extraHours)));
+  if (line.night) parts.push(L.nightPay(moneyFormat.format(line.night)));
+  if (line.expenses) parts.push(L.expensesPay(moneyFormat.format(line.expenses)));
   const note = privateProps(line.event).note;
   if (line.type === OTHER && note) parts.push(note);
   return parts.join(" · ");
@@ -1360,19 +1528,18 @@ function loadMissingTimes() {
         .sort((a, b) => (a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : 0));
       const btn = el("needsTimesBtn");
       btn.hidden = !missingTimes.length;
-      btn.textContent =
-        missingTimes.length === 1 ? "1 past shift still needs its times" : missingTimes.length + " past shifts still need their times";
+      btn.textContent = L.pastMissing(missingTimes.length);
     })
     .catch(() => {}); // the board already reports loading problems
 }
 
 function openMissingTimes() {
-  const panel = openPanel("Shifts missing times");
+  const panel = openPanel(L.missingTitle);
   missingTimes.forEach(({ ds, type, event }) => {
     const form = shiftForm(ds, type, event);
     form.dataset.keepOpen = "1";
     form.querySelector("h3").textContent =
-      type + " · " + new Date(ds + "T00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      L.types[type] + " · " + new Date(ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
     panel.appendChild(form);
   });
   panel.showModal();
@@ -1387,7 +1554,7 @@ function isDirty() {
 }
 
 function confirmDiscard() {
-  return !isDirty() || confirm("You have shifts that aren't saved yet. Discard them?");
+  return !isDirty() || confirm(L.discard);
 }
 
 function updateSaveState() {
@@ -1403,12 +1570,12 @@ function updateSaveState() {
   const loading = Object.values(weekEls).some((week) => !week.loaded && !week.failed);
   const status = el("statusText");
   status.classList.toggle("is-quiet", !dirty && !saving);
-  if (saving) status.textContent = "Saving to Google Calendar…";
-  else if (dirty) status.textContent = [adds && adds + " to add", removes && removes + " to remove"].filter(Boolean).join(" · ");
-  else if (loading) status.textContent = "Loading your shifts…";
-  else status.textContent = "No unsaved changes";
+  if (saving) status.textContent = L.savingCalendar;
+  else if (dirty) status.textContent = [adds && L.toAdd(adds), removes && L.toRemove(removes)].filter(Boolean).join(" · ");
+  else if (loading) status.textContent = L.loadingShifts;
+  else status.textContent = L.noUnsaved;
   el("saveBtn").disabled = !dirty || saving;
-  el("saveBtn").textContent = saving ? "Saving…" : "Save to Calendar";
+  el("saveBtn").textContent = saving ? L.saving : L.saveToCalendar;
 }
 
 // Compares what's selected now with what the calendar had when each week loaded:
@@ -1438,10 +1605,9 @@ function saveChanges() {
     saving = false;
     const failures = results.filter((r) => r.status === "rejected");
     if (failures.length) {
-      const prefix = failures.length === 1 ? "1 change couldn't be saved" : failures.length + " changes couldn't be saved";
-      showApiError(prefix, failures[0].reason);
+      showApiError(L.changesFailed(failures.length), failures[0].reason);
     } else {
-      showToast("Saved to Google Calendar");
+      showToast(L.savedCalendar);
     }
     updateSaveState();
     loadWeeks(weeks);
