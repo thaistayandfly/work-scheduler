@@ -1178,7 +1178,7 @@ function monthTotals(lines) {
   return totals;
 }
 
-// ---------- The month's table (written to the pay sheet; Google's PDF of it is what gets sent) ----------
+// ---------- The month's table (written to the pay sheet, and drawn into the PDF that gets sent) ----------
 
 // The report (its words are REPORT_TEXT in i18n.js), top to bottom: title; name, month and year; the total to pay (gross salary) and, apart from it,
 // the expenses reimbursement; a quiet hours summary; then one row per shift and a totals row. Plain values, not
@@ -1650,7 +1650,7 @@ function lineDetail(line) {
   return parts.join(" · ");
 }
 
-// ---------- Sending the month: a review, Google's PDF of the tab, Gmail, and a copy in Drive ----------
+// ---------- Sending the month: a review, the PDF, Gmail, and a copy in Drive ----------
 
 const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
@@ -1736,7 +1736,7 @@ function useCurrentRates() {
     .catch((err) => showApiError(L.errUpdateSheet, err));
 }
 
-// The review: who it goes to, the name on it, the totals and Google's PDF of the month. Nothing leaves before Send.
+// The review: who it goes to, the name on it, the totals and the month's PDF. Nothing leaves before Send.
 function openSendPanel() {
   const { lines, totals, rates, sent } = payData;
   const month = payMonth;
@@ -1838,12 +1838,13 @@ function openSendPanel() {
   panel.addEventListener("close", () => url && URL.revokeObjectURL(url), { once: true });
   panel.showModal();
 
-  // The PDF is made from the month's tab, freshly written, so what's checked here is exactly what's sent
+  // The PDF is drawn from the very table the month's tab is rewritten with, so the sheet and the PDF agree
+  const table = monthTable(month, lines, totals, settings, reportLanguage(settings), !!sent);
   writeMonthTab({ corrected: !!sent })
     .then((id) => {
       if (id === null) throw Object.assign(new Error(L.errKeptEdits), { plain: true });
       tabId = id;
-      return exportTabPdf(id);
+      return makeReportPdf(table, table.rows[table.at.title][0] + " — " + settings.full_name);
     })
     .then((blob) => {
       pdf = blob;
@@ -1863,35 +1864,260 @@ function openSendPanel() {
     });
 }
 
-// Google's own PDF of one tab: A4 landscape, fitted to the page width, no gridlines. A plain fetch, not apiFetch,
-// so a refusal here can't sign the person out.
-function exportTabPdf(tabId) {
-  const params = new URLSearchParams({
-    format: "pdf",
-    gid: String(tabId),
-    size: "A4",
-    portrait: "false",
-    fitw: "true",
-    gridlines: "false",
-    printtitle: "false",
-    sheetnames: "false",
-    pagenum: "UNDEFINED",
-    attachment: "false",
-    top_margin: "0.5",
-    bottom_margin: "0.5",
-    left_margin: "0.5",
-    right_margin: "0.5",
-    horizontal_alignment: "CENTER",
+// ---------- The PDF: the month's report drawn page by page, in the sheet's layout ----------
+// Google only exports a single tab as PDF to apps allowed to read all of someone's Drive, and ShiftBoard only
+// asks for its own files. So the app draws the report itself: A4 landscape pages on a canvas (the browser
+// takes care of Hebrew running right to left), each saved as a JPEG inside a small PDF.
+
+const PDF_PAGE = { width: 1123, height: 794, margin: 40, scale: 2 }; // A4 landscape at 96 px per inch, drawn at 2x
+
+const cssColor = (c) => "rgb(" + [c.red || 0, c.green || 0, c.blue || 0].map((x) => Math.round(x * 255)).join(",") + ")";
+
+// The report's rows as the PDF draws them: cells spanning columns like the sheet's merges, each row's look,
+// which rows form the shifts table (bordered, headings repeated on a new page), and which keep with the next
+function reportRows({ rows, at, lines }) {
+  const C = SHEET_COLORS;
+  const W = COLUMN_WIDTHS.length;
+  const money = (v) => (typeof v === "number" ? "₪" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(v));
+  const numeric = (c) => c >= 5 && c <= 9;
+  const shown = (v, c) => (c >= 7 && c <= 9 ? money(v) : numeric(c) && typeof v === "number" ? v.toFixed(2) : String(v));
+  return rows.map((r, i) => {
+    if (i === at.title) return { cells: [{ text: r[0], span: W }], bg: C.ink, color: C.white, bold: true, size: 20, height: 46 };
+    if (i >= at.info && i < at.info + 3) return { cells: [{ text: r[0], span: 3, color: C.label, bold: true }, { text: String(r[3]), span: W - 3 }], height: 26 };
+    if (i === at.salary) return { cells: [{ text: r[0], span: 3 }, { text: money(r[3]), span: W - 3 }], bg: C.ink, color: C.white, bold: true, size: 16, height: 38 };
+    if (i === at.expenses) return { cells: [{ text: r[0], span: 3 }, { text: money(r[3]), span: W - 3 }], bg: C.heading, bold: true, size: 14, height: 32 };
+    if (i === at.note) return { cells: [{ text: r[0], span: W }], color: C.missing, bold: true, height: 24 };
+    if (i >= at.hoursTitle && i < at.hoursEnd) {
+      const title = i === at.hoursTitle;
+      return { cells: [{ text: r[0], span: W }], color: C.label, bold: title, size: 11, height: 19, keep: title ? at.hoursEnd - at.hoursTitle - 1 : 0 };
+    }
+    if (i === at.shiftsTitle) return { cells: [{ text: r[0], span: W }], bg: C.ink, color: C.white, bold: true, size: 15, height: 34, keep: 2 };
+    if (i === at.headings) return { cells: r.map((t) => ({ text: t, align: "center", wrap: true })), bg: C.heading, bold: true, table: true, headings: true, keep: 1 };
+    if (i >= at.lines && i < at.sum) {
+      const line = lines[i - at.lines];
+      const flag = line.missingTimes;
+      return {
+        cells: r.map((v, c) => ({
+          text: shown(v, c),
+          align: numeric(c) ? "end" : "start",
+          wrap: c === W - 1,
+          bg: c === 2 ? C[line.type] : null,
+          bold: c === 2 || (c === W - 1 && flag),
+          color: c === W - 1 && flag ? C.missing : null,
+        })),
+        bg: (i - at.lines) % 2 ? C.band : null,
+        table: true,
+      };
+    }
+    if (i === at.sum) return { cells: r.map((v, c) => ({ text: shown(v, c), align: numeric(c) ? "end" : "start" })), bg: C.heading, bold: true, table: true };
+    return { cells: [], height: 12 }; // a blank row: space between the parts
   });
-  return fetch("https://docs.google.com/spreadsheets/d/" + sheetId + "/export?" + params, { headers: { Authorization: "Bearer " + accessToken } })
-    .then((r) => {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.blob();
-    })
-    .then((blob) => {
-      if (blob.type && blob.type.indexOf("pdf") < 0) throw new Error(blob.type); // e.g. a sign-in page instead of the PDF
-      return blob;
+}
+
+// The sheet's columns rebalanced for a printed page: more room for the times, less for Details, which wraps
+const PDF_COLUMN_WIDTHS = [100, 90, 130, 90, 130, 80, 110, 110, 100, 110, 280];
+
+// Draws the report onto as many A4 landscape canvases as it needs; pages after the first carry a running head
+function drawReportPages(table, runningHead) {
+  const { width, height, margin, scale } = PDF_PAGE;
+  const inner = width - 2 * margin;
+  const sum = (list) => list.reduce((a, b) => a + b, 0);
+  const widths = PDF_COLUMN_WIDTHS.map((w) => (w * inner) / sum(PDF_COLUMN_WIDTHS));
+  const rtl = table.rtl;
+  const pad = 6;
+  const pages = [];
+  let ctx = null;
+  let y = 0;
+  let tableTop = null;
+  const font = (bold, size) => (bold ? "700 " : "400 ") + (size || 12) + "px Heebo, Arial, sans-serif";
+  const boldOf = (cell, row) => (cell.bold !== undefined ? cell.bold : row.bold);
+  const lineHeight = (row) => Math.round((row.size || 12) * 1.4);
+  // A run of columns, counted from the reading side (the right in Hebrew)
+  const place = (first, count) => {
+    const before = sum(widths.slice(0, first));
+    const w = sum(widths.slice(first, first + count));
+    return { x: rtl ? margin + inner - before - w : margin + before, w };
+  };
+  const wrap = (text, max) => {
+    const lines = [];
+    let current = "";
+    text.split(" ").forEach((word) => {
+      const next = current ? current + " " + word : word;
+      if (current && ctx.measureText(next).width > max) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
     });
+    lines.push(current);
+    return lines;
+  };
+  const layout = (row) => {
+    let column = 0;
+    const cells = row.cells.map((cell) => {
+      const spot = place(column, cell.span || 1);
+      column += cell.span || 1;
+      const room = spot.w - 2 * pad;
+      let size = row.size || 12;
+      ctx.font = font(boldOf(cell, row), size);
+      if (cell.wrap) return Object.assign({}, cell, spot, { size, lines: wrap(cell.text, room) });
+      // One line that's too long is set a little smaller rather than cut off
+      const measured = ctx.measureText(cell.text).width;
+      if (measured > room) size = Math.max(8, Math.floor(((size * room) / measured) * 10) / 10);
+      return Object.assign({}, cell, spot, { size, lines: [cell.text] });
+    });
+    const tallest = Math.max(1, ...cells.map((cell) => cell.lines.length));
+    return { cells, h: Math.max(row.height || 24, tallest * lineHeight(row) + 10) };
+  };
+  const newPage = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.direction = rtl ? "rtl" : "ltr";
+    ctx.textBaseline = "middle";
+    pages.push({ canvas, ctx });
+    if (pages.length > 1 && runningHead) {
+      // Whose report and which month, in case the pages get separated
+      ctx.font = font(false, 10);
+      ctx.fillStyle = cssColor(SHEET_COLORS.label);
+      ctx.textAlign = "start";
+      ctx.fillText(runningHead, rtl ? width - margin : margin, margin / 2);
+    }
+    y = margin;
+  };
+  const closeTable = () => {
+    if (tableTop === null) return;
+    ctx.strokeStyle = cssColor(SHEET_COLORS.ink);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(margin, tableTop, inner, y - tableTop);
+    tableTop = null;
+  };
+  const draw = (row, { cells, h }) => {
+    if (row.table && tableTop === null) tableTop = y;
+    if (row.bg) {
+      ctx.fillStyle = cssColor(row.bg);
+      ctx.fillRect(margin, y, inner, h);
+    }
+    const lh = lineHeight(row);
+    cells.forEach((cell) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cell.x, y, cell.w, h);
+      ctx.clip(); // text never runs into the next cell
+      if (cell.bg) {
+        ctx.fillStyle = cssColor(cell.bg);
+        ctx.fillRect(cell.x, y, cell.w, h);
+      }
+      ctx.font = font(boldOf(cell, row), cell.size);
+      ctx.fillStyle = cssColor(cell.color || row.color || SHEET_COLORS.ink);
+      ctx.textAlign = cell.align === "center" ? "center" : cell.align === "end" ? "end" : "start";
+      const x = cell.align === "center" ? cell.x + cell.w / 2 : (cell.align === "end") !== rtl ? cell.x + cell.w - pad : cell.x + pad;
+      const top = y + h / 2 - ((cell.lines.length - 1) * lh) / 2;
+      cell.lines.forEach((text, k) => ctx.fillText(text, x, top + k * lh));
+      ctx.restore();
+      if (row.table) {
+        ctx.strokeStyle = cssColor(SHEET_COLORS.line);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cell.x, y, cell.w, h);
+      }
+    });
+    y += h;
+  };
+
+  const rows = reportRows(table);
+  const headings = rows.find((row) => row.headings);
+  newPage();
+  rows.forEach((row, i) => {
+    let laid = layout(row);
+    // A heading stays with what follows it; a row that doesn't fit starts a new page
+    const needed = laid.h + sum(rows.slice(i + 1, i + 1 + (row.keep || 0)).map((next) => layout(next).h));
+    if (y + needed > height - margin && y > margin) {
+      closeTable();
+      newPage();
+      if (row.table && !row.headings && headings) draw(headings, layout(headings)); // the shifts carry on under their headings
+      laid = layout(row);
+    }
+    if (!row.table) closeTable();
+    draw(row, laid);
+  });
+  closeTable();
+  if (pages.length > 1) {
+    pages.forEach((page, i) => {
+      page.ctx.font = font(false, 10);
+      page.ctx.fillStyle = cssColor(SHEET_COLORS.label);
+      page.ctx.direction = "ltr"; // "1 / 2" reads left to right in Hebrew too
+      page.ctx.textAlign = "center";
+      page.ctx.fillText(i + 1 + " / " + pages.length, width / 2, height - margin / 2);
+    });
+  }
+  return pages.map((page) => page.canvas);
+}
+
+// The report is set in Heebo (Latin and Hebrew); a canvas doesn't wait for web fonts, so they load first
+function loadReportFonts() {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  return Promise.all(["400 12px Heebo", "700 12px Heebo"].map((f) => document.fonts.load(f, "Aa1₪אב"))).catch(() => {});
+}
+
+function canvasJpeg(canvas) {
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("canvas"))), "image/jpeg", 0.92))
+    .then((blob) => blob.arrayBuffer())
+    .then((buffer) => ({ bytes: new Uint8Array(buffer), width: canvas.width, height: canvas.height }));
+}
+
+// A minimal PDF: one A4 landscape page per JPEG, and the title (UTF-16, so Hebrew survives) for PDF viewers
+function pdfFromJpegs(images, title) {
+  const enc = new TextEncoder();
+  const chunks = [];
+  const offsets = [];
+  let size = 0;
+  const add = (piece) => {
+    const bytes = typeof piece === "string" ? enc.encode(piece) : piece;
+    chunks.push(bytes);
+    size += bytes.length;
+  };
+  const object = (id, dict, stream) => {
+    offsets[id] = size;
+    add(id + " 0 obj\n" + dict + "\n");
+    if (stream) {
+      add("stream\n");
+      add(stream);
+      add("\nendstream\n");
+    }
+    add("endobj\n");
+  };
+  const utf16 = (s) => "<FEFF" + s.split("").map((unit) => unit.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")).join("") + ">"; // UTF-16BE
+  const W = 842; // A4 landscape, in points
+  const H = 595;
+  const info = 3 + images.length * 3;
+  add("%PDF-1.4\n%âãÏÓ\n");
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  object(2, "<< /Type /Pages /Kids [" + images.map((_, i) => 3 + i * 3 + " 0 R").join(" ") + "] /Count " + images.length + " >>");
+  images.forEach((img, i) => {
+    const page = 3 + i * 3;
+    const draw = enc.encode("q " + W + " 0 0 " + H + " 0 0 cm /Im0 Do Q");
+    object(page, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H + "] /Resources << /XObject << /Im0 " + (page + 2) + " 0 R >> >> /Contents " + (page + 1) + " 0 R >>");
+    object(page + 1, "<< /Length " + draw.length + " >>", draw);
+    object(page + 2, "<< /Type /XObject /Subtype /Image /Width " + img.width + " /Height " + img.height +
+      " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + img.bytes.length + " >>", img.bytes);
+  });
+  object(info, "<< /Title " + utf16(title || "") + " /Creator (ShiftBoard) /Producer (ShiftBoard) >>");
+  const xref = size;
+  let table = "xref\n0 " + (info + 1) + "\n0000000000 65535 f \n";
+  for (let id = 1; id <= info; id++) table += String(offsets[id]).padStart(10, "0") + " 00000 n \n";
+  add(table + "trailer\n<< /Size " + (info + 1) + " /Root 1 0 R /Info " + info + " 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
+  return new Blob(chunks, { type: "application/pdf" });
+}
+
+function makeReportPdf(table, title) {
+  return loadReportFonts()
+    .then(() => Promise.all(drawReportPages(table, title).map(canvasJpeg)))
+    .then((images) => pdfFromJpegs(images, title));
 }
 
 // Emails the PDF to the company from the person's own Gmail, keeps a copy in their Drive, and marks the month sent
