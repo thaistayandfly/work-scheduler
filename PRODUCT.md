@@ -40,7 +40,7 @@ A two-tap shift board that writes straight into each person's own Google Calenda
 
 ### Part 2 rules (confirmed; everything except the PDF and sending is built)
 
-- **Work types:** Event and Warehouse are the main ones. "Other" is rare and stays visually minor: it needs start and end times and an amount; the description is optional.
+- **Work types:** Event and Warehouse are the main ones. "Other" is rare and stays visually minor: it needs start and end times and an amount; the description is optional. It never depends on an Event or Warehouse that day: "+ Other job" in each week's header, or tapping an empty day, opens its form directly.
 - **Times:** every shift needs a real start and end before its month can be sent. A shift can cross midnight and has no length limit. An all-day calendar event means "times not entered yet"; entering times turns it into a timed event.
 - **Pay** (each person has their own rates):
   - Warehouse: exact hours × the Warehouse hourly rate.

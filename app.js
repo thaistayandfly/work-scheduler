@@ -415,13 +415,24 @@ function renderWeek(monday) {
   section.className = "week";
   section.setAttribute("aria-labelledby", "week-" + key);
 
+  // The header sticks while the week's days scroll under it, so "+ Other job" stays in reach
+  const head = document.createElement("div");
+  head.className = "week-head";
   const title = document.createElement("h2");
   title.className = "week-title";
   title.id = "week-" + key;
   const name = weekName(monday);
   const range = formatRange(monday, sunday);
   title.innerHTML = name ? name + ' <span class="week-dates">' + range + "</span>" : range;
-  section.appendChild(title);
+  head.appendChild(title);
+  const other = makeButton(L.otherJob, "btn-text week-other", () => {
+    const days = weekDates(monday);
+    const today = dateStr(new Date());
+    openOtherJob(days.includes(today) ? today : days[0]);
+  });
+  other.setAttribute("aria-label", L.addOtherInWeek(range));
+  head.appendChild(other);
+  section.appendChild(head);
 
   const error = document.createElement("p");
   error.className = "week-error";
@@ -711,16 +722,24 @@ function openDayPanel(ds) {
   el("boardHint").hidden = true;
 
   const shifts = savedShifts(ds);
-  if (!shifts.length) {
-    const empty = document.createElement("p");
-    empty.className = "panel-note";
-    empty.textContent = L.noShiftsDay;
-    panel.appendChild(empty);
-  }
   shifts.forEach(({ type, event }) => panel.appendChild(shiftForm(ds, type, event)));
+  if (shifts.length) {
+    const addOther = makeButton(L.addOther, "btn-quiet add-other", () => addOther.replaceWith(shiftForm(ds, OTHER, null)));
+    panel.appendChild(addOther);
+  } else {
+    // Nothing saved that day: the only thing to add here is an Other job, so its form is already open
+    const note = document.createElement("p");
+    note.className = "panel-note";
+    note.textContent = L.emptyDay;
+    panel.append(note, shiftForm(ds, OTHER, null));
+  }
+  panel.showModal();
+}
 
-  const addOther = makeButton(L.addOther, "btn-quiet add-other", () => addOther.replaceWith(shiftForm(ds, OTHER, null)));
-  panel.appendChild(addOther);
+// "+ Other job" in a week's header: the job's form, dated today or the week's first day (the date can be changed)
+function openOtherJob(ds) {
+  const panel = openPanel(L.addOther);
+  panel.appendChild(shiftForm(ds, OTHER, null));
   panel.showModal();
 }
 
@@ -794,7 +813,19 @@ function shiftForm(ds, type, event) {
     }
     showDuration();
   };
-  [f.startDate, f.startTime, f.endTime].forEach((input) => input.addEventListener("change", rollEnd));
+  // Moving the start to another day moves the end with it, keeping the shift's length
+  let shownStart = f.startDate.value;
+  f.startDate.addEventListener("change", () => {
+    const moved = Math.round((new Date(f.startDate.value + "T00:00") - new Date(shownStart + "T00:00")) / 864e5);
+    if (moved && f.endDate.value) {
+      const end = new Date(f.endDate.value + "T00:00");
+      end.setDate(end.getDate() + moved);
+      f.endDate.value = dateStr(end);
+    }
+    if (f.startDate.value) shownStart = f.startDate.value;
+    rollEnd();
+  });
+  [f.startTime, f.endTime].forEach((input) => input.addEventListener("change", rollEnd));
   f.endDate.addEventListener("change", showDuration);
   showDuration();
 
@@ -942,6 +973,7 @@ function createSheet() {
 // The tab is in the report's language, with the language itself written by name ("עברית" / "English")
 function writeSettingsTab(id, values) {
   const T = REPORT_TEXT[reportLanguage(values)];
+  const rtl = T === REPORT_TEXT.he;
   const shown = Object.assign({}, values, { report_language: T.langName });
   const rows = SETTINGS_ROWS.map((key) =>
     key === "title" ? [T.settings.title] : key ? [T.settings[key], shown[key] == null ? "" : shown[key], key] : []
@@ -957,7 +989,14 @@ function writeSettingsTab(id, values) {
       });
       return jsonRequest(SHEETS_API + "/" + id + ":batchUpdate", "POST", {
         requests: [
-          { updateSheetProperties: { properties: { sheetId: tabId, rightToLeft: T === REPORT_TEXT.he }, fields: "rightToLeft" } },
+          { updateSheetProperties: { properties: { sheetId: tabId, rightToLeft: rtl }, fields: "rightToLeft" } },
+          {
+            repeatCell: {
+              range: { sheetId: tabId, startRowIndex: 0, endRowIndex: rows.length, startColumnIndex: 0, endColumnIndex: 3 },
+              cell: { userEnteredFormat: { horizontalAlignment: rtl ? "RIGHT" : "LEFT", textDirection: rtl ? "RIGHT_TO_LEFT" : "LEFT_TO_RIGHT" } },
+              fields: "userEnteredFormat(horizontalAlignment,textDirection)",
+            },
+          },
           {
             repeatCell: {
               range: { sheetId: tabId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -1248,12 +1287,20 @@ function tableFormatRequests(tabId, { rows, at, lines, rtl }) {
   const thin = { style: "SOLID", color: C.line };
   const edge = { style: "SOLID_MEDIUM", color: C.ink };
   const money = { numberFormat: { type: "CURRENCY", pattern: "₪#,##0.00" } };
+  // A right-to-left tab only mirrors the columns: Sheets still writes each cell left to right and aligns it left.
+  // So every cell says both, like the English table mirrored: text at the start, numbers at the end.
+  const start = rtl ? "RIGHT" : "LEFT";
+  const end = rtl ? "LEFT" : "RIGHT";
 
   const req = [
     { unmergeCells: { range: range(0, 500, 0, 26) } }, // earlier versions of the tab leave merges and formats behind
     { repeatCell: { range: range(0, 500, 0, 26), cell: {}, fields: "userEnteredFormat" } },
     { updateSheetProperties: { properties: { sheetId: tabId, rightToLeft: !!rtl, gridProperties: { frozenRowCount: 0 } }, fields: "rightToLeft,gridProperties.frozenRowCount" } },
-    cells(range(0, rows.length, 0, W), { verticalAlignment: "MIDDLE", textFormat: font(C.ink) }, "verticalAlignment,textFormat"),
+    cells(
+      range(0, rows.length, 0, W),
+      { verticalAlignment: "MIDDLE", horizontalAlignment: start, textDirection: rtl ? "RIGHT_TO_LEFT" : "LEFT_TO_RIGHT", textFormat: font(C.ink) },
+      "verticalAlignment,horizontalAlignment,textDirection,textFormat"
+    ),
     merge(at.title, 0, W),
     fill(at.title, C.ink, C.white, true, 15),
   ];
@@ -1270,7 +1317,7 @@ function tableFormatRequests(tabId, { rows, at, lines, rtl }) {
     merge(at.expenses, 0, 3),
     merge(at.expenses, 3, W),
     fill(at.expenses, C.heading, C.ink, true, 12),
-    cells(range(at.salary, at.expenses + 1, 3, 4), Object.assign({ horizontalAlignment: rtl ? "RIGHT" : "LEFT" }, money), "horizontalAlignment,numberFormat")
+    cells(range(at.salary, at.expenses + 1, 3, 4), Object.assign({ horizontalAlignment: start }, money), "horizontalAlignment,numberFormat")
   );
   if (at.note >= 0) req.push(merge(at.note, 0, W), cells(range(at.note, at.note + 1, 0, W), { textFormat: font(C.missing, true) }, "textFormat"));
   // The hours summary: small and grey, there when wanted
@@ -1291,6 +1338,7 @@ function tableFormatRequests(tabId, { rows, at, lines, rtl }) {
     if (line.missingTimes) req.push(cells(range(r, r + 1, W - 1, W), { textFormat: font(C.missing, true) }, "textFormat"));
   });
   req.push(
+    cells(range(at.lines, at.sum + 1, 5, 10), { horizontalAlignment: end }, "horizontalAlignment"),
     cells(range(at.lines, at.sum + 1, 5, 7), { numberFormat: { type: "NUMBER", pattern: "0.00" } }, "numberFormat"),
     cells(range(at.lines, at.sum + 1, 7, 10), money, "numberFormat"),
     cells(range(at.lines, at.sum + 1, W - 1, W), { wrapStrategy: "WRAP" }, "wrapStrategy"),

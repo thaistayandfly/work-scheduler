@@ -308,11 +308,15 @@ button {
 }
 
 .fine {
-  grid-area: fine;
   max-width: 42ch;
-  margin-top: calc(var(--s3) - var(--s5));
   color: var(--ink-2);
   font-size: 0.875rem;
+}
+
+/* Only the welcome screen places it; anywhere else, a grid area it doesn't have would add a stray column */
+.welcome .fine {
+  grid-area: fine;
+  margin-top: calc(var(--s3) - var(--s5));
 }
 
 /* ---------- Workspace (signed in) ---------- */
@@ -395,25 +399,51 @@ button {
   gap: var(--s6);
 }
 
-.week-title {
+/* A week's header sticks to the top while its days scroll under it: the week's name and dates, and "+ Other job" */
+.week-head {
   position: sticky;
   top: 0;
   z-index: 2;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: var(--s2);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
   padding: max(var(--s3), env(safe-area-inset-top)) 0 var(--s2);
   border-bottom: 2px solid var(--ink);
   background: var(--board);
+}
+
+.week-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s2);
   font: 700 1.25rem/1.1 var(--font-label);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .demo .week-title {
-  position: static;
-  padding-top: 0;
+  padding-bottom: var(--s2);
+  border-bottom: 2px solid var(--ink);
+}
+
+/* Small, like the rare job it adds; its 44px target reaches into the header's padding */
+.week-other {
+  flex-shrink: 0;
+  margin-block: -10px -8px;
+}
+
+.week-other::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-inline-end: 0.35em;
+  vertical-align: -0.02em;
+  background: currentColor;
+  -webkit-mask: var(--plus) center / contain no-repeat;
+  mask: var(--plus) center / contain no-repeat;
 }
 
 .week-dates {
@@ -1311,6 +1341,7 @@ a.btn-text {
 .rates {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end; /* a label that wraps on a narrow phone doesn't knock its field out of line */
   gap: var(--s3);
 }
 

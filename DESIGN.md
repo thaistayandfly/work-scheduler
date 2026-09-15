@@ -238,7 +238,7 @@ A Text button in the top bar that names the other language in its own script: "�
 A native select styled as a field: Whiteboard Panel, a 1.5px Hairline border, 8px corners, 48px tall, a drawn chevron, and 16px text. It sits under a Meta label that reads "Save shifts to". Each calendar's name reads in its own direction, so an email address starts from its beginning on a Hebrew page too.
 
 ### Week title
-Headline capitals ("This week", "Next week", "Last week", or the date range alone), the date range in Pencil Grey beside them, and a 2px Marker Ink rule beneath. It sticks to the top while scrolling.
+Headline capitals ("This week", "Next week", "Last week", or the date range alone), the date range in Pencil Grey beside them, and a 2px Marker Ink rule beneath. At its end sits a small "+ Other job" Text button with a drawn plus; it opens an Other job dated today (or the week's first day). The whole header sticks to the top while its week scrolls, so the button is always in reach without adding anything to the day rows.
 
 ### Save bar and toast
 The save bar is Whiteboard Panel with a Hairline top border. Its status reads "No unsaved changes", "Loading your shifts…", "3 to add · 1 to remove" or "Saving to Google Calendar…". The toast is Marker Ink (or Alarm Red for errors), sits above the bar, can be dismissed with a tap, and stays 3s (6s for errors).

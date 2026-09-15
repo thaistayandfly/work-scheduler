@@ -80,8 +80,10 @@ const UI_TEXT = {
 
     // A day's panel
     close: "Close",
-    noShiftsDay: "No saved shifts on this day yet. Tap Event or Warehouse on the board and save first, or add an Other job.",
+    emptyDay: "Event and Warehouse are the tapes on the board. Any other paid job goes here.",
     addOther: "Add an Other job",
+    otherJob: "Other job",
+    addOtherInWeek: (range) => "Add an Other job, week of " + range,
     start: "Start",
     end: "End",
     startDate: "Start date",
@@ -214,8 +216,10 @@ const UI_TEXT = {
     changesFailed: (n) => (n === 1 ? "שינוי אחד לא נשמר" : n + " שינויים לא נשמרו"),
 
     close: "סגירה",
-    noShiftsDay: "אין עדיין משמרות שמורות ביום הזה. סמנו אירוע או מחסן בלוח ושמרו קודם, או הוסיפו עבודה אחרת.",
+    emptyDay: "אירוע ומחסן מסמנים בלוח. כל עבודה אחרת בתשלום נכנסת כאן.",
     addOther: "הוספת עבודה אחרת",
+    otherJob: "עבודה אחרת",
+    addOtherInWeek: (range) => "הוספת עבודה אחרת, שבוע " + range,
     start: "התחלה",
     end: "סיום",
     startDate: "תאריך התחלה",
