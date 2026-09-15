@@ -119,6 +119,10 @@ window.addEventListener("load", () => {
   el("prevMonth").addEventListener("click", () => changePayMonth(-1));
   el("nextMonth").addEventListener("click", () => changePayMonth(1));
   el("settingsForm").addEventListener("submit", submitSettings);
+  // The name's language follows the report language picked in the form
+  el("settingsForm").addEventListener("change", (e) => {
+    if (e.target.name === "report_language") el("fullNameLabel").textContent = L.fullNameIn(e.target.value);
+  });
   el("writeSheetBtn").addEventListener("click", updateSheet);
   el("sendBtn").addEventListener("click", openSendPanel);
   el("reopenBtn").addEventListener("click", reopenMonth);
@@ -1070,6 +1074,25 @@ function reportLanguage(s) {
   return v === "en" || v.startsWith("english") || v === "אנגלית" ? "en" : "he";
 }
 
+// The name on a report is in the report's language: Hebrew letters on a Hebrew report, English letters on an
+// English one (spaces, hyphens, apostrophes and the Hebrew geresh are fine; digits and the other script aren't)
+const NAME_PATTERNS = {
+  he: /^(?=.*\p{Script=Hebrew})[\p{Script=Hebrew}\s'’.-]+$/u,
+  en: /^(?=.*\p{Script=Latin})[\p{Script=Latin}\s'’.-]+$/u,
+};
+
+function nameFitsReport(name, lang) {
+  return NAME_PATTERNS[lang === "en" ? "en" : "he"].test(String(name).trim());
+}
+
+// Why the saved name can't go on the report, or "" when it can (a missing name is reported on its own)
+function nameProblem(s) {
+  const name = String((s && s.full_name) || "").trim();
+  const lang = reportLanguage(s);
+  if (!name || nameFitsReport(name, lang)) return "";
+  return lang === "he" ? L.errNameHe : L.errNameEn;
+}
+
 function readSettingsTab() {
   return ensureSheet()
     .then((id) => apiFetch(SHEETS_API + "/" + id + "/values/Settings!A1:C50"))
@@ -1190,7 +1213,7 @@ function monthTable(monthDate, lines, totals, s, lang, corrected) {
   const year = String(monthDate.getFullYear());
   const at = {};
   const rows = [];
-  at.title = rows.push([T.title + " — " + monthName + " " + year + (corrected ? " (" + T.corrected + ")" : "")]) - 1;
+  at.title = rows.push([T.title + " - " + monthName + " " + year + (corrected ? " (" + T.corrected + ")" : "")]) - 1; // plain hyphens only
   at.info = rows.push([T.name, "", "", s.full_name || ""]) - 1;
   rows.push([T.month, "", "", monthName]);
   rows.push([T.year, "", "", year]);
@@ -1447,6 +1470,12 @@ function tableFormatRequests(tabId, { rows, at, lines, rtl }) {
 }
 
 function updateSheet() {
+  const problem = nameProblem(settings); // never a name in the other language on the sheet
+  if (problem) {
+    showToast(problem, true);
+    el("settingsBox").open = true;
+    return;
+  }
   const btn = el("writeSheetBtn");
   btn.disabled = true;
   btn.textContent = L.updating;
@@ -1505,11 +1534,18 @@ function openPayView() {
 }
 
 function fillSettingsForm(s) {
-  const f = el("settingsForm").elements;
+  const form = el("settingsForm");
+  const f = form.elements;
   SETTING_KEYS.forEach((key) => (f[key].value = s[key] || ""));
   f.report_language.value = reportLanguage(s);
+  el("fullNameLabel").textContent = L.fullNameIn(reportLanguage(s));
+  // A name saved before the language rule, or typed into the sheet by hand, in the wrong letters: say so here
+  const problem = nameProblem(s);
+  const error = form.querySelector(".form-error");
+  error.textContent = problem;
+  error.hidden = !problem;
   const r = ratesFrom(s);
-  el("settingsBox").open = !(s.full_name && r.warehouse && r.event); // stays open until the basics are in
+  el("settingsBox").open = !(s.full_name && r.warehouse && r.event) || !!problem; // stays open until the basics are right
 }
 
 function submitSettings(e) {
@@ -1523,6 +1559,8 @@ function submitSettings(e) {
     error.hidden = false;
   };
   if (!values.full_name) return fail(L.errFullName);
+  const nameIssue = nameProblem(values);
+  if (nameIssue) return fail(nameIssue);
   if (values.company_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.company_email)) return fail(L.errEmail);
   error.hidden = true;
   const btn = form.querySelector('[type="submit"]');
@@ -1676,6 +1714,7 @@ function sendBlocker({ lines, totals, rates }) {
     return L.blockRates;
   }
   if (!settings.full_name || !settings.company_email) return L.blockDetails;
+  if (nameProblem(settings)) return L.blockName(reportLanguage(settings));
   return "";
 }
 
@@ -1844,7 +1883,7 @@ function openSendPanel() {
     .then((id) => {
       if (id === null) throw Object.assign(new Error(L.errKeptEdits), { plain: true });
       tabId = id;
-      return makeReportPdf(table, table.rows[table.at.title][0] + " — " + settings.full_name);
+      return makeReportPdf(table, table.rows[table.at.title][0] + " - " + settings.full_name);
     })
     .then((blob) => {
       pdf = blob;
