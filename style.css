@@ -87,6 +87,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  scrollbar-gutter: stable; /* so the page doesn't shift sideways when an open panel locks its scrolling */
 }
 
 body {
@@ -841,6 +842,11 @@ button.day-label {
   font-weight: 600;
 }
 
+/* While a panel is open the board underneath stays put: swiping the panel or the dimmed page never scrolls it */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
 /* The panel: a bottom sheet on phones, a centred dialog on wide screens */
 .panel {
   width: min(100%, 34rem);
@@ -849,6 +855,7 @@ button.day-label {
   margin: auto auto 0;
   padding: 0 var(--gutter) calc(var(--s5) + env(safe-area-inset-bottom));
   overflow: auto;
+  overscroll-behavior: contain; /* reaching the end of the panel doesn't carry the swipe on to the page */
   border: 0;
   border-radius: 14px 14px 0 0;
   background: var(--panel);
