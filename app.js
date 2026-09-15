@@ -1,6 +1,8 @@
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
-// Only the files this app creates (the pay sheet), nothing else in the user's Drive
+// Only the files this app creates (the pay sheet, the sent reports), nothing else in the user's Drive
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Asked for only when someone first sends a month: it can send mail as them, never read their mailbox
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 // "email" lets us show who's signed in and pass it as login_hint when the token needs renewing
 const SCOPES = CALENDAR_SCOPE + " " + DRIVE_SCOPE + " email";
 const APP_TAG = "shiftboard";
@@ -14,11 +16,12 @@ let tokenClient = null;
 let accessToken = null;
 let tokenExpiresAt = 0;
 let grantedScopes = ""; // what the current token may do; older saved tokens predate the Drive permission
+let pendingGrant = null; // { then, cancel } while Google is asked for one more permission mid-session
 
 let calendars = [];
 let selectedCalendarId = localStorage.getItem("sb_calendarId") || "primary";
 
-// Mondays of the weeks on the board, earliest first
+// First days of the weeks on the board (Mondays, or Sundays in Hebrew), earliest first
 let weeks = [];
 // daysState[dateStr][type] = { active, originalActive, eventIds, events }
 //   originalActive/eventIds/events: what the calendar had when that week loaded; active: what's selected now
@@ -27,7 +30,7 @@ let daysState = {};
 // Board elements, so one day or week can be updated without re-rendering the rest
 let dayButtons = {}; // dateStr -> { Event: <button>, Warehouse: <button> }
 let dayMeta = {}; // dateStr -> the line under a day's tapes showing its times and extras
-let weekEls = {}; // Monday's dateStr -> { section, error, loaded, failed }
+let weekEls = {}; // the week's first day as a dateStr -> { section, error, loaded, failed }
 let boardSeq = 0; // bumped whenever the board is rebuilt, so responses meant for the old one are ignored
 let saving = false;
 
@@ -82,6 +85,12 @@ window.addEventListener("load", () => {
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
       callback: onTokenReceived,
+      // The popup was closed or blocked: whatever waited for a new permission gives up
+      error_callback: () => {
+        const grant = pendingGrant;
+        pendingGrant = null;
+        if (grant) grant.cancel();
+      },
     });
   });
   el("signInBtn").addEventListener("click", signIn);
@@ -111,6 +120,14 @@ window.addEventListener("load", () => {
   el("nextMonth").addEventListener("click", () => changePayMonth(1));
   el("settingsForm").addEventListener("submit", submitSettings);
   el("writeSheetBtn").addEventListener("click", updateSheet);
+  el("sendBtn").addEventListener("click", openSendPanel);
+  el("reopenBtn").addEventListener("click", reopenMonth);
+  el("useRatesBtn").addEventListener("click", useCurrentRates);
+  el("sendReminderBtn").addEventListener("click", () => {
+    const now = new Date();
+    payMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    showView("pay");
+  });
   el("langBtn").addEventListener("click", switchLanguage);
   el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
@@ -135,6 +152,17 @@ function signIn() {
   if (!tokenClient) return; // Google's script hasn't loaded yet
   // prompt "" only shows the consent screen when it's actually needed (e.g. first sign-in)
   const opts = { prompt: "" };
+  const email = localStorage.getItem("sb_email");
+  if (email) opts.login_hint = email;
+  tokenClient.requestAccessToken(opts);
+}
+
+// Asks Google for one more permission (sending mail) without leaving the screen: then() runs once it's granted,
+// cancel() if it isn't. Permissions given earlier stay; Google adds to them.
+function requestScope(scope, then, cancel) {
+  if (!tokenClient) return cancel();
+  pendingGrant = { then, cancel };
+  const opts = { prompt: "", scope: SCOPES + " " + scope };
   const email = localStorage.getItem("sb_email");
   if (email) opts.login_hint = email;
   tokenClient.requestAccessToken(opts);
@@ -168,16 +196,29 @@ function restoreSession() {
 }
 
 function onTokenReceived(resp) {
+  const grant = pendingGrant;
+  pendingGrant = null;
   if (resp.error) {
+    if (grant) grant.cancel();
     showToast(L.signInFailed + resp.error, true);
     return;
   }
   if (!google.accounts.oauth2.hasGrantedAllScopes(resp, CALENDAR_SCOPE)) {
+    if (grant) grant.cancel();
     showToast(L.noCalendarAccess, true);
     return;
   }
   const expiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
   localStorage.setItem("sb_token", JSON.stringify({ accessToken: resp.access_token, expiresAt, scope: resp.scope || "" }));
+  if (grant && accessToken) {
+    // One more permission, mid-session: the screen stays as it is and the waiting step carries on
+    accessToken = resp.access_token;
+    tokenExpiresAt = expiresAt;
+    grantedScopes = resp.scope || "";
+    grant.then();
+    return;
+  }
+  if (grant) grant.cancel(); // the session had expired meanwhile: this is a fresh sign-in
   startSession(resp.access_token, expiresAt, resp.scope || "");
 }
 
@@ -318,11 +359,11 @@ function createNewCalendar() {
 
 // ---------- Dates ----------
 
-function getMonday(date) {
+function weekStart(date) {
+  // Weeks start on Monday, or on Sunday in Hebrew, like Israeli calendars
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+  const firstDay = UI_LANG === "he" ? 0 : 1;
+  d.setDate(d.getDate() - ((d.getDay() - firstDay + 7) % 7));
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -338,10 +379,10 @@ function longDay(ds) {
   return new Date(ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "long", month: "long", day: "numeric" });
 }
 
-function weekDates(monday) {
+function weekDates(first) {
   const dates = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
+    const d = new Date(first);
     d.setDate(d.getDate() + i);
     dates.push(dateStr(d));
   }
@@ -349,8 +390,8 @@ function weekDates(monday) {
 }
 
 // "This week" / "Next week" / "Last week" for nearby weeks; the rest go by their dates alone
-function weekName(monday) {
-  const diff = Math.round((monday - getMonday(new Date())) / (7 * 24 * 60 * 60 * 1000));
+function weekName(first) {
+  const diff = Math.round((first - weekStart(new Date())) / (7 * 24 * 60 * 60 * 1000));
   return L.weekNames[diff] || "";
 }
 
@@ -386,30 +427,30 @@ function addWeeks(count) {
   const board = el("board");
   const added = [];
   for (let i = 0; i < Math.abs(count); i++) {
-    let monday;
+    let first;
     if (!weeks.length) {
-      monday = getMonday(new Date());
+      first = weekStart(new Date());
     } else {
-      monday = new Date(count > 0 ? weeks[weeks.length - 1] : weeks[0]);
-      monday.setDate(monday.getDate() + (count > 0 ? 7 : -7));
+      first = new Date(count > 0 ? weeks[weeks.length - 1] : weeks[0]);
+      first.setDate(first.getDate() + (count > 0 ? 7 : -7));
     }
-    const section = renderWeek(monday);
+    const section = renderWeek(first);
     if (count > 0) {
-      weeks.push(monday);
+      weeks.push(first);
       board.appendChild(section);
     } else {
-      weeks.unshift(monday);
+      weeks.unshift(first);
       board.insertBefore(section, board.firstChild);
     }
-    added.push(monday);
+    added.push(first);
   }
   loadWeeks(added);
 }
 
-function renderWeek(monday) {
-  const key = dateStr(monday);
-  const sunday = new Date(monday);
-  sunday.setDate(sunday.getDate() + 6);
+function renderWeek(first) {
+  const key = dateStr(first);
+  const last = new Date(first);
+  last.setDate(last.getDate() + 6);
 
   const section = document.createElement("section");
   section.className = "week";
@@ -421,12 +462,12 @@ function renderWeek(monday) {
   const title = document.createElement("h2");
   title.className = "week-title";
   title.id = "week-" + key;
-  const name = weekName(monday);
-  const range = formatRange(monday, sunday);
+  const name = weekName(first);
+  const range = formatRange(first, last);
   title.innerHTML = name ? name + ' <span class="week-dates">' + range + "</span>" : range;
   head.appendChild(title);
   const other = makeButton(L.otherJob, "btn-text week-other", () => {
-    const days = weekDates(monday);
+    const days = weekDates(first);
     const today = dateStr(new Date());
     openOtherJob(days.includes(today) ? today : days[0]);
   });
@@ -442,14 +483,14 @@ function renderWeek(monday) {
   retry.type = "button";
   retry.className = "btn-text";
   retry.textContent = L.tryAgain;
-  retry.addEventListener("click", () => loadWeeks([monday]));
+  retry.addEventListener("click", () => loadWeeks([first]));
   error.appendChild(retry);
   section.appendChild(error);
 
   const list = document.createElement("ol");
   list.className = "days";
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
+    const d = new Date(first);
     d.setDate(d.getDate() + i);
     list.appendChild(renderDay(d));
   }
@@ -592,8 +633,8 @@ function loadWeeks(list) {
       });
       // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
       // keeping toggles the user hasn't saved yet — including ones that just failed to save
-      list.forEach((monday) => {
-        weekDates(monday).forEach((ds) => {
+      list.forEach((first) => {
+        weekDates(first).forEach((ds) => {
           WORK_TYPES.forEach((type) => {
             const entry = daysState[ds][type];
             const unsaved = entry.active !== entry.originalActive;
@@ -616,15 +657,15 @@ function loadWeeks(list) {
 }
 
 function setWeeksBusy(list, busy, failed = false) {
-  list.forEach((monday) => {
-    const week = weekEls[dateStr(monday)];
+  list.forEach((first) => {
+    const week = weekEls[dateStr(first)];
     if (!week) return;
     if (!busy && !failed) week.loaded = true;
     week.failed = failed;
     week.section.setAttribute("aria-busy", String(busy));
     week.error.hidden = !failed || week.loaded;
     // Taps wait for a week's first load; later reloads keep unsaved toggles, so they stay tappable
-    weekDates(monday).forEach((ds) => WORK_TYPES.forEach((type) => (dayButtons[ds][type].disabled = !week.loaded)));
+    weekDates(first).forEach((ds) => WORK_TYPES.forEach((type) => (dayButtons[ds][type].disabled = !week.loaded)));
     if (!busy) {
       week.section.dataset.settling = "";
       setTimeout(() => delete week.section.dataset.settling, 80);
@@ -741,6 +782,13 @@ function openOtherJob(ds) {
   const panel = openPanel(L.addOther);
   panel.appendChild(shiftForm(ds, OTHER, null));
   panel.showModal();
+}
+
+function textEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = text; // often the person's own words, so never innerHTML
+  return node;
 }
 
 function makeButton(text, className, onClick) {
@@ -936,11 +984,15 @@ let sheetId = localStorage.getItem("sb_sheetId");
 let settings = null; // { full_name, company_email, rate_* } as last read from or saved to the sheet
 
 const hasDrive = () => grantedScopes.split(" ").includes(DRIVE_SCOPE);
+const hasGmail = () => grantedScopes.split(" ").includes(GMAIL_SCOPE);
 
 function forgetSheet() {
   sheetId = null;
   settings = null;
+  sheetTabs = null;
+  reportsFolderId = null;
   localStorage.removeItem("sb_sheetId");
+  localStorage.removeItem("sb_folderId");
 }
 
 function jsonRequest(url, method, body) {
@@ -1126,19 +1178,19 @@ function monthTotals(lines) {
   return totals;
 }
 
-// ---------- The month's table (written to the pay sheet, and later the PDF) ----------
+// ---------- The month's table (written to the pay sheet; Google's PDF of it is what gets sent) ----------
 
 // The report (its words are REPORT_TEXT in i18n.js), top to bottom: title; name, month and year; the total to pay (gross salary) and, apart from it,
 // the expenses reimbursement; a quiet hours summary; then one row per shift and a totals row. Plain values, not
 // formulas, so the sheet always matches the app. `at` says where each part starts, for the formatting.
-function monthTable(monthDate, lines, totals, s, lang) {
+function monthTable(monthDate, lines, totals, s, lang, corrected) {
   const T = REPORT_TEXT[lang] || REPORT_TEXT.he;
   const pad = (n) => String(n).padStart(2, "0");
   const monthName = monthDate.toLocaleDateString(T.locale, { month: "long" });
   const year = String(monthDate.getFullYear());
   const at = {};
   const rows = [];
-  at.title = rows.push([T.title + " — " + monthName + " " + year]) - 1;
+  at.title = rows.push([T.title + " — " + monthName + " " + year + (corrected ? " (" + T.corrected + ")" : "")]) - 1;
   at.info = rows.push([T.name, "", "", s.full_name || ""]) - 1;
   rows.push([T.month, "", "", monthName]);
   rows.push([T.year, "", "", year]);
@@ -1212,6 +1264,42 @@ const jsonGet = (url) => apiFetch(url).then((r) => r.json());
 const monthTabTitle = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
 const legacyTabTitle = (d) => monthTabTitle(d) + " " + d.toLocaleDateString("en-US", { month: "long" });
 
+const SENT_KEY = "shiftboard_sent"; // hidden note on a month's tab: when it was sent, to whom, with which rates
+let sheetTabs = null; // the pay sheet's tabs and their hidden notes, as last read
+
+function loadTabs() {
+  return ensureSheet()
+    .then((id) => jsonGet(SHEETS_API + "/" + id + "?fields=sheets(properties(sheetId,title),developerMetadata(metadataId,metadataKey,metadataValue))"))
+    .then((meta) => (sheetTabs = meta.sheets || []));
+}
+
+function monthTab(d) {
+  const tabs = sheetTabs || [];
+  return tabs.find((s) => s.properties.title === monthTabTitle(d)) || tabs.find((s) => s.properties.title === legacyTabTitle(d)) || null;
+}
+
+// What was sent for a month, { sentAt, to, rates, fingerprint, pdfId, corrections, open }, or null if it never was
+function sentInfo(d) {
+  const tab = monthTab(d);
+  const note = tab && (tab.developerMetadata || []).find((m) => m.metadataKey === SENT_KEY);
+  if (!note) return null;
+  try {
+    return Object.assign(JSON.parse(note.metadataValue), { metadataId: note.metadataId, tabId: tab.properties.sheetId });
+  } catch (e) {
+    return null; // a note broken by hand mustn't stop the Pay view
+  }
+}
+
+// Records on the month's tab what was sent, or that the month was reopened
+function saveSentInfo(info) {
+  const { metadataId, tabId, ...stored } = info;
+  const value = JSON.stringify(stored);
+  const request = metadataId
+    ? { updateDeveloperMetadata: { dataFilters: [{ developerMetadataLookup: { metadataId } }], developerMetadata: { metadataValue: value }, fields: "metadataValue" } }
+    : { createDeveloperMetadata: { developerMetadata: { metadataKey: SENT_KEY, metadataValue: value, location: { sheetId: tabId }, visibility: "DOCUMENT" } } };
+  return jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [request] }).then(loadTabs);
+}
+
 // A fingerprint of a table's values; trailing empty cells and rows don't count (Sheets drops them)
 function tableHash(rows) {
   const clean = rows.map((row) => {
@@ -1226,20 +1314,19 @@ function tableHash(rows) {
   return (h >>> 0).toString(16);
 }
 
-// Writes the Pay view's month into its own tab ("2026-09"), in the report language. If the tab was changed by hand
-// since the app last wrote it, asks first. Resolves with the tab's id, or null when the user chose to keep their edits.
-function writeMonthTab() {
+// Writes the Pay view's month into its own tab ("2026-09"), in the report language, titled "Corrected" when it's
+// being resent. If the tab was changed by hand since the app last wrote it, asks first. Resolves with the tab's id,
+// or null when the user chose to keep their edits.
+function writeMonthTab({ corrected = false } = {}) {
   const title = monthTabTitle(payMonth);
   const quoted = encodeURIComponent("'" + title + "'");
-  const table = monthTable(payMonth, payData.lines, payData.totals || monthTotals([]), settings, reportLanguage(settings));
+  const table = monthTable(payMonth, payData.lines, payData.totals || monthTotals([]), settings, reportLanguage(settings), corrected);
   const rows = table.rows;
   let tabId;
   let note = null;
-  return ensureSheet()
-    .then((id) => jsonGet(SHEETS_API + "/" + id + "?fields=sheets(properties(sheetId,title),developerMetadata(metadataId,metadataKey,metadataValue))"))
-    .then((meta) => {
-      const tabs = meta.sheets || [];
-      const tab = tabs.find((s) => s.properties.title === title) || tabs.find((s) => s.properties.title === legacyTabTitle(payMonth));
+  return loadTabs()
+    .then(() => {
+      const tab = monthTab(payMonth);
       if (!tab) {
         return jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: [{ addSheet: { properties: { title } } }] }).then((res) => {
           tabId = res.replies[0].addSheet.properties.sheetId;
@@ -1270,6 +1357,7 @@ function writeMonthTab() {
       return jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + ":clear", "POST", {})
         .then(() => jsonRequest(SHEETS_API + "/" + sheetId + "/values/" + quoted + "!A1?valueInputOption=RAW", "PUT", { values: rows }))
         .then(() => jsonRequest(SHEETS_API + "/" + sheetId + ":batchUpdate", "POST", { requests: tableFormatRequests(tabId, table).concat(noteRequest) }))
+        .then(loadTabs)
         .then(() => tabId);
     });
 }
@@ -1407,6 +1495,7 @@ function openPayView() {
   (settings ? Promise.resolve(settings) : loadSettings())
     .then((s) => {
       fillSettingsForm(s);
+      sheetTabs = null; // read afresh: another device may have sent a month
       renderPayMonth();
     })
     .catch((err) => {
@@ -1462,20 +1551,25 @@ function renderPayMonth() {
   const month = payMonth.getMonth();
   el("monthTitle").textContent = payMonth.toLocaleDateString(LOCALE, { month: "long", year: "numeric" });
   el("payStatus").textContent = L.loadingMonth;
-  el("writeSheetBtn").disabled = true; // until this month's shifts are in, so the sheet can't get another month's
+  // Until this month's shifts are in, so neither the sheet nor the company can get another month's
+  el("writeSheetBtn").disabled = true;
+  el("sendBtn").disabled = true;
   el("openSheetLink").hidden = true;
   // Up to a day into next month, so a shift starting late on the last day is included
-  fetchEvents(new Date(year, month, 1), new Date(year, month + 1, 2))
-    .then((items) => {
+  Promise.all([fetchEvents(new Date(year, month, 1), new Date(year, month + 1, 2)), sheetTabs || loadTabs()])
+    .then(([items]) => {
       if (seq !== payLoadSeq) return;
-      const rates = ratesFrom(settings);
+      // A month that was sent keeps the rates it was sent with; the others use today's
+      const sent = sentInfo(payMonth);
+      const rates = (sent && sent.rates) || ratesFrom(settings);
       const lines = monthLines(items, year, month, rates);
       const totals = monthTotals(lines);
-      payData = { lines, totals };
+      payData = { lines, totals, rates, sent };
       el("writeSheetBtn").disabled = false;
       renderPayStatus(lines, totals, rates);
       renderPayTotals(lines.length ? totals : null);
       renderPayLines(lines);
+      renderSendState();
     })
     .catch((err) => showApiError(L.errLoadMonth, err));
 }
@@ -1556,6 +1650,419 @@ function lineDetail(line) {
   return parts.join(" · ");
 }
 
+// ---------- Sending the month: a review, Google's PDF of the tab, Gmail, and a copy in Drive ----------
+
+const GMAIL_SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
+let reportsFolderId = localStorage.getItem("sb_folderId");
+
+const sameRates = (a, b) => ["warehouse", "event", "extra", "night"].every((k) => a[k] === b[k]);
+const monthLabel = (d, locale) => d.toLocaleDateString(locale || LOCALE, { month: "long", year: "numeric" });
+
+// What a month's pay is made of, in any report language: to notice calendar changes after it was sent
+function monthFingerprint(lines) {
+  const endMs = (event) => (event.end && event.end.dateTime ? new Date(event.end.dateTime).getTime() : "");
+  return tableHash(lines.map((l) => [l.ds, l.type, startMs(l.event), endMs(l.event), l.pay, l.night, l.expenses, privateProps(l.event).note || ""]));
+}
+
+// Why the Pay view's month can't be sent yet, or "" when it can
+function sendBlocker({ lines, totals, rates }) {
+  const now = new Date();
+  if (payMonth > new Date(now.getFullYear(), now.getMonth(), 1)) return L.blockFuture;
+  if (!lines.length) return L.blockEmpty;
+  if (totals.missingTimes) return L.blockTimes;
+  const t = totals;
+  if ((t.warehouse.count && !rates.warehouse) || (t.event.count && !rates.event) || (t.event.extraHours && !rates.extra) || (t.nights.count && !rates.night)) {
+    return L.blockRates;
+  }
+  if (!settings.full_name || !settings.company_email) return L.blockDetails;
+  return "";
+}
+
+// Not sent (and what's still missing), sent (with a way to reopen it), or reopened for a correction
+function renderSendState() {
+  const { lines, rates, sent } = payData;
+  const closed = !!sent && !sent.open;
+  const keptRates = !!sent && sent.open && !sameRates(rates, ratesFrom(settings));
+  const status = el("sendStatus");
+  const send = el("sendBtn");
+  let text;
+  let tone = "";
+  if (closed) {
+    const date = new Date(sent.sentAt).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" });
+    const drifted = monthFingerprint(lines) !== sent.fingerprint;
+    text = L.sentOn(date, sent.to, sent.corrections > 0) + (drifted ? " " + L.drift : "");
+    tone = drifted ? " is-warning" : " is-sent";
+  } else {
+    const blocked = sendBlocker(payData);
+    text = [sent ? L.reopened : L.notSent, keptRates ? L.ratesAsSent : "", blocked].filter(Boolean).join(" ");
+    send.disabled = !!blocked;
+  }
+  status.textContent = text;
+  status.className = "send-status" + tone;
+  status.hidden = false;
+  send.hidden = closed;
+  send.textContent = sent ? L.reviewCorrection : L.reviewSend;
+  el("writeSheetBtn").hidden = closed; // a sent month's tab is the record of what was sent
+  el("reopenBtn").hidden = !closed;
+  el("useRatesBtn").hidden = !keptRates;
+  const pdf = el("sentPdfLink");
+  pdf.hidden = !(closed && sent.pdfId);
+  if (!pdf.hidden) pdf.href = "https://drive.google.com/file/d/" + encodeURIComponent(sent.pdfId) + "/view";
+  if (closed) {
+    const link = el("openSheetLink");
+    link.href = "https://docs.google.com/spreadsheets/d/" + sheetId + "/edit#gid=" + sent.tabId;
+    link.hidden = false;
+  }
+}
+
+function reopenMonth() {
+  const sent = payData.sent;
+  if (!sent || !confirm(L.confirmReopen(monthLabel(payMonth)))) return;
+  const btn = el("reopenBtn");
+  btn.disabled = true;
+  saveSentInfo(Object.assign({}, sent, { open: true }))
+    .then(renderPayMonth)
+    .catch((err) => showApiError(L.errUpdateSheet, err))
+    .finally(() => (btn.disabled = false));
+}
+
+// A reopened month keeps the rates it was sent with, unless the person switches it to today's
+function useCurrentRates() {
+  const sent = payData.sent;
+  if (!sent) return;
+  saveSentInfo(Object.assign({}, sent, { rates: ratesFrom(settings) }))
+    .then(renderPayMonth)
+    .catch((err) => showApiError(L.errUpdateSheet, err));
+}
+
+// The review: who it goes to, the name on it, the totals and Google's PDF of the month. Nothing leaves before Send.
+function openSendPanel() {
+  const { lines, totals, rates, sent } = payData;
+  const month = payMonth;
+  const T = REPORT_TEXT[reportLanguage(settings)];
+  const firstEver = !(sheetTabs || []).some((tab) => (tab.developerMetadata || []).some((m) => m.metadataKey === SENT_KEY));
+  const sendLabel = sent ? L.sendCorrection : L.sendNow;
+  let pdf = null;
+  let tabId = null;
+  let url = null;
+
+  const panel = openPanel(L.sendTitle(monthLabel(month)));
+  const box = document.createElement("div");
+  box.className = "send-review";
+  const now = new Date();
+  if (month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth()) {
+    box.appendChild(textEl("p", "send-caution", L.monthNotOver(monthLabel(month))));
+  }
+  const facts = document.createElement("dl");
+  facts.className = "send-facts";
+  [
+    [L.sendTo, settings.company_email, "ltr"],
+    [L.sendName, settings.full_name, "auto"],
+    [L.reportLanguage, T.langName],
+    [L.tabShifts, L.countShifts(lines.length)],
+    [L.totalToPay + " (" + L.grossSalary + ")", moneyFormat.format(totals.salary)],
+    [L.reimbursement, moneyFormat.format(totals.expenses)],
+  ].forEach(([label, value, dir]) => {
+    const row = document.createElement("div");
+    const dd = textEl("dd", "", value);
+    if (dir) dd.dir = dir;
+    row.append(textEl("dt", "", label), dd);
+    facts.appendChild(row);
+  });
+  box.append(
+    facts,
+    makeButton(L.changeDetails, "btn-text", () => {
+      panel.close();
+      el("settingsBox").open = true;
+      el("settingsBox").scrollIntoView();
+    })
+  );
+  const pdfLine = textEl("p", "send-pdf", L.preparingPdf);
+  box.appendChild(pdfLine);
+  let agree = null;
+  if (firstEver) {
+    // The very first report: the person confirms the name and the address it goes out with
+    const label = document.createElement("label");
+    label.className = "check";
+    agree = document.createElement("input");
+    agree.type = "checkbox";
+    label.append(agree, " " + L.confirmFirst);
+    box.appendChild(label);
+  }
+  if (!hasGmail()) box.appendChild(textEl("p", "fine", L.gmailNote));
+  const error = textEl("p", "form-error", "");
+  error.setAttribute("role", "alert");
+  error.hidden = true;
+  const fail = (msg) => {
+    error.textContent = msg;
+    error.hidden = false;
+  };
+  const ready = () => {
+    sendBtn.textContent = sendLabel;
+    sendBtn.disabled = !pdf || (!!agree && !agree.checked);
+  };
+  const sendNow = () => {
+    error.hidden = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = L.sending;
+    const go = () => {
+      if (!hasGmail()) {
+        fail(L.gmailDenied);
+        return ready();
+      }
+      deliverMonth({ month, T, pdf, sent, totals, lines, rates, tabId })
+        .then((to) => {
+          panel.close();
+          showToast(L.sentToast(to));
+          renderPayMonth();
+          loadMissingTimes();
+        })
+        .catch((err) => {
+          fail(err.message);
+          ready();
+        });
+    };
+    // Sending mail is a permission of its own, asked for the first time it's needed (within this tap, so Google's window can open)
+    if (hasGmail()) go();
+    else requestScope(GMAIL_SCOPE, go, ready);
+  };
+  const actions = document.createElement("div");
+  actions.className = "form-actions";
+  const sendBtn = makeButton(sendLabel, "btn-primary", sendNow);
+  sendBtn.disabled = true;
+  actions.appendChild(sendBtn);
+  box.append(error, actions);
+  panel.appendChild(box);
+  if (agree) agree.addEventListener("change", ready);
+  panel.addEventListener("close", () => url && URL.revokeObjectURL(url), { once: true });
+  panel.showModal();
+
+  // The PDF is made from the month's tab, freshly written, so what's checked here is exactly what's sent
+  writeMonthTab({ corrected: !!sent })
+    .then((id) => {
+      if (id === null) throw Object.assign(new Error(L.errKeptEdits), { plain: true });
+      tabId = id;
+      return exportTabPdf(id);
+    })
+    .then((blob) => {
+      pdf = blob;
+      url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.className = "btn-text";
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = L.openPdf;
+      pdfLine.replaceWith(link);
+      ready();
+    })
+    .catch((err) => {
+      pdfLine.hidden = true;
+      fail(err.plain ? err.message : L.errPdf + ": " + err.message);
+    });
+}
+
+// Google's own PDF of one tab: A4 landscape, fitted to the page width, no gridlines. A plain fetch, not apiFetch,
+// so a refusal here can't sign the person out.
+function exportTabPdf(tabId) {
+  const params = new URLSearchParams({
+    format: "pdf",
+    gid: String(tabId),
+    size: "A4",
+    portrait: "false",
+    fitw: "true",
+    gridlines: "false",
+    printtitle: "false",
+    sheetnames: "false",
+    pagenum: "UNDEFINED",
+    attachment: "false",
+    top_margin: "0.5",
+    bottom_margin: "0.5",
+    left_margin: "0.5",
+    right_margin: "0.5",
+    horizontal_alignment: "CENTER",
+  });
+  return fetch("https://docs.google.com/spreadsheets/d/" + sheetId + "/export?" + params, { headers: { Authorization: "Bearer " + accessToken } })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.blob();
+    })
+    .then((blob) => {
+      if (blob.type && blob.type.indexOf("pdf") < 0) throw new Error(blob.type); // e.g. a sign-in page instead of the PDF
+      return blob;
+    });
+}
+
+// Emails the PDF to the company from the person's own Gmail, keeps a copy in their Drive, and marks the month sent
+function deliverMonth({ month, T, pdf, sent, totals, lines, rates, tabId }) {
+  const name = settings.full_name;
+  const to = settings.company_email;
+  const monthName = monthLabel(month, T.locale);
+  const corrected = !!sent;
+  const sheetMoney = (n) => "₪" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // as in the PDF
+  const replaces = sent ? new Date(sent.sentAt).toLocaleDateString(T.locale, { day: "numeric", month: "long", year: "numeric" }) : "";
+  const fileName = T.fileName(monthName, name, corrected).replace(/[\\/:*?"<>|]/g, "-");
+  const email = {
+    to,
+    subject: T.emailSubject(monthName, name, corrected),
+    paragraphs: T.emailBody({ month: monthName, salary: sheetMoney(totals.salary), expenses: sheetMoney(totals.expenses), name, replaces }).filter(Boolean),
+    rtl: T === REPORT_TEXT.he,
+    pdf,
+    fileName,
+    asciiName: "shift-report-" + monthTabTitle(month) + (corrected ? "-corrected" : "") + ".pdf",
+  };
+  return sendEmail(email)
+    .catch((err) => {
+      throw new Error(L.errSend + ": " + err.message);
+    })
+    // The email is what counts: a copy that fails to save doesn't undo it
+    .then(() => saveReportCopy(pdf, fileName, monthTabTitle(month)).catch(forgetFolder))
+    .then((copy) =>
+      saveSentInfo({
+        sentAt: new Date().toISOString(),
+        to,
+        rates,
+        fingerprint: monthFingerprint(lines),
+        pdfId: (copy && copy.id) || null,
+        corrections: sent ? (sent.corrections || 0) + 1 : 0,
+        open: false,
+        metadataId: sent ? sent.metadataId : undefined,
+        tabId,
+      }).catch((err) => {
+        throw new Error(L.errMark + ": " + err.message);
+      })
+    )
+    .then(() => to);
+}
+
+// Bytes to base64, in slices so a large PDF can't overflow the call stack
+function toBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+// The email as MIME: the text as plain and as HTML (right to left for a Hebrew report), and the PDF attached.
+// Everything that isn't ASCII travels base64-encoded, headers included, so Hebrew arrives intact.
+function sendEmail({ to, subject, paragraphs, rtl, pdf, fileName, asciiName }) {
+  const utf8 = (s) => toBase64(new TextEncoder().encode(s));
+  const wrap = (b64) => b64.replace(/.{76}(?=.)/g, "$&\r\n");
+  const word = (s) => "=?UTF-8?B?" + utf8(s) + "?=";
+  // RFC 2047: a header in any language, as encoded words short enough for every mail client
+  const header = (s) => {
+    const chars = Array.from(s);
+    const words = [];
+    for (let i = 0; i < chars.length; i += 15) words.push(word(chars.slice(i, i + 15).join("")));
+    return words.join("\r\n ");
+  };
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const html =
+    '<div dir="' + (rtl ? "rtl" : "ltr") + '" style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">' +
+    paragraphs.map((p) => "<p>" + esc(p).replace(/\n/g, "<br>") + "</p>").join("") +
+    "</div>";
+  // RFC 2231: the attachment's name in any language, plus a plain-ASCII name for older mail clients
+  const encodedName = encodeURIComponent(fileName).replace(/['()*!]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  return pdf.arrayBuffer().then((buffer) => {
+    const mixed = "=_sb_mixed_" + Date.now().toString(36);
+    const alt = "=_sb_alt_" + Date.now().toString(36);
+    const mime = [
+      "To: " + to,
+      "Subject: " + header(subject),
+      "MIME-Version: 1.0",
+      'Content-Type: multipart/mixed; boundary="' + mixed + '"',
+      "",
+      "--" + mixed,
+      'Content-Type: multipart/alternative; boundary="' + alt + '"',
+      "",
+      "--" + alt,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      wrap(utf8(paragraphs.join("\n\n").replace(/\n/g, "\r\n"))),
+      "--" + alt,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      wrap(utf8(html)),
+      "--" + alt + "--",
+      "--" + mixed,
+      'Content-Type: application/pdf; name="' + word(fileName) + '"',
+      'Content-Disposition: attachment; filename="' + asciiName + "\"; filename*=UTF-8''" + encodedName,
+      "Content-Transfer-Encoding: base64",
+      "",
+      wrap(toBase64(new Uint8Array(buffer))),
+      "--" + mixed + "--",
+      "",
+    ].join("\r\n");
+    const raw = btoa(mime).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return jsonRequest(GMAIL_SEND, "POST", { raw });
+  });
+}
+
+// A copy of what was sent, in a "ShiftBoard" folder in the person's Drive
+function saveReportCopy(pdf, fileName, month) {
+  return reportsFolder().then((folderId) => {
+    const boundary = "=_sb_upload_" + Date.now().toString(36);
+    const meta = { name: fileName, mimeType: "application/pdf", parents: [folderId], appProperties: { shiftboard: "report", month } };
+    const body = new Blob([
+      "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(meta) + "\r\n",
+      "--" + boundary + "\r\nContent-Type: application/pdf\r\n\r\n",
+      pdf,
+      "\r\n--" + boundary + "--\r\n",
+    ]);
+    return apiFetch(DRIVE_UPLOAD + "?uploadType=multipart&fields=id", {
+      method: "POST",
+      headers: { "Content-Type": 'multipart/related; boundary="' + boundary + '"' },
+      body,
+    }).then((r) => r.json());
+  });
+}
+
+function reportsFolder() {
+  if (reportsFolderId) return Promise.resolve(reportsFolderId);
+  const q = encodeURIComponent("appProperties has { key='shiftboard' and value='reports' } and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  return jsonGet(DRIVE_FILES + "?q=" + q + "&fields=files(id)")
+    .then((data) =>
+      data.files && data.files.length
+        ? data.files[0].id
+        : jsonRequest(DRIVE_FILES + "?fields=id", "POST", { name: "ShiftBoard", mimeType: "application/vnd.google-apps.folder", appProperties: { shiftboard: "reports" } }).then(
+            (folder) => folder.id
+          )
+    )
+    .then((id) => {
+      reportsFolderId = id;
+      localStorage.setItem("sb_folderId", id);
+      return id;
+    });
+}
+
+// A folder deleted by hand is found or made again next time
+function forgetFolder() {
+  reportsFolderId = null;
+  localStorage.removeItem("sb_folderId");
+  return null;
+}
+
+// Last month has shifts but wasn't sent: a nudge on the board (only once the pay sheet is set up on this device)
+function checkUnsentLastMonth(items) {
+  const btn = el("sendReminderBtn");
+  btn.hidden = true;
+  if (!hasDrive() || !sheetId) return;
+  const now = new Date();
+  const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prefix = monthTabTitle(last) + "-";
+  if (!items.some((event) => workTypeOf(event) && (eventDate(event) || "").startsWith(prefix))) return;
+  loadTabs()
+    .then(() => {
+      const sent = sentInfo(last);
+      if (sent && !sent.open) return;
+      btn.textContent = L.unsentReminder(monthLabel(last));
+      btn.hidden = false;
+    })
+    .catch(() => {}); // only a reminder: the Pay tab reports problems properly
+}
+
 // ---------- Past shifts still missing their times (this month and last) ----------
 
 let missingTimes = []; // [{ ds, type, event }]
@@ -1577,6 +2084,7 @@ function loadMissingTimes() {
       const btn = el("needsTimesBtn");
       btn.hidden = !missingTimes.length;
       btn.textContent = L.pastMissing(missingTimes.length);
+      checkUnsentLastMonth(items);
     })
     .catch(() => {}); // the board already reports loading problems
 }

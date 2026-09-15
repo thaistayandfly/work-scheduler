@@ -194,7 +194,7 @@ The save bar is fixed to the bottom in thumb reach, above the home indicator, wi
 
 From 60rem the measure widens to 68rem and weeks sit two side by side. The signed-out screen becomes two columns: copy on the left, the example week on the right, centred in the viewport. Under 22.5rem the date column narrows to 2.75rem and tape labels tighten so "Warehouse" still fits a 320px phone.
 
-In Hebrew the whole page runs right to left: the date column sits on the right, Event is the first tape (on the right), the save bar's status is on the right with Save on the left, and the month arrows swap sides. Email addresses and times still read left to right.
+In Hebrew the whole page runs right to left: the date column sits on the right, Event is the first tape (on the right), the save bar's status is on the right with Save on the left, and the month arrows swap sides. Email addresses and times still read left to right. Weeks start on Sunday, as in Israeli calendars.
 
 Spacing runs on a 4px base (4, 8, 12, 16, 24, 32, 48). Related things sit 8-16px apart; separate groups get 24-32px.
 
@@ -239,6 +239,12 @@ A native select styled as a field: Whiteboard Panel, a 1.5px Hairline border, 8p
 
 ### Week title
 Headline capitals ("This week", "Next week", "Last week", or the date range alone), the date range in Pencil Grey beside them, and a 2px Marker Ink rule beneath. At its end sits a small "+ Other job" Text button with a drawn plus; it opens an Other job dated today (or the week's first day). The whole header sticks to the top while its week scrolls, so the button is always in reach without adding anything to the day rows.
+
+### Sending a month
+On the Pay tab, the month's status sits above its actions: "Not sent to the company yet" in Pencil Grey (with what's still missing), "Sent to … on …" in bold Marker Ink, or Alarm Red when the calendar changed after sending. **Review and send** is the month's Primary button; **Update my sheet** and **Reopen to correct** are Quiet buttons. The review opens in the same panel as a day: a ruled list of facts (label in Pencil Grey, value in bold Marker Ink at the end of the row), a Text link to open Google's PDF, a checkbox before the very first send, and the Primary **Send to the company** at the bottom.
+
+### Unsent-month reminder
+A banner in the same dashed shape as the missing-times banner, but in Marker Ink rather than Alarm Red: a nudge, not an alarm. It names last month and opens the Pay tab on it.
 
 ### Save bar and toast
 The save bar is Whiteboard Panel with a Hairline top border. Its status reads "No unsaved changes", "Loading your shifts…", "3 to add · 1 to remove" or "Saving to Google Calendar…". The toast is Marker Ink (or Alarm Red for errors), sits above the bar, can be dismissed with a tap, and stays 3s (6s for errors).

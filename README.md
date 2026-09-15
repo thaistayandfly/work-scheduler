@@ -1,17 +1,17 @@
 # ShiftBoard
 
-Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as all-day events on a Google Calendar of your choice.
+Client-only shift board: pick "Event" or "Warehouse" for each day and save them to a Google Calendar of your choice; after the shifts, add the real times and extras, see your pay, and at month end email the month's report to the company.
 
 ## Setup (10 min)
 
 1. **Google Cloud Console** (same project as your login button):
-   - APIs & Services → Library → confirm **Google Calendar API**, **Google Sheets API** and **Google Drive API** are enabled (the last two are for the Pay tab's sheet).
+   - APIs & Services → Library → confirm **Google Calendar API**, **Google Sheets API**, **Google Drive API** and **Gmail API** are enabled (Sheets and Drive for the Pay tab's sheet, Gmail for sending the monthly report).
    - APIs & Services → Credentials → **Create Credentials → OAuth client ID → Web application**.
      - Under **Authorized JavaScript origins**, add your GitHub Pages URL, e.g. `https://yourname.github.io`.
      - No redirect URI needed.
    - Copy the generated **Client ID**.
 
-2. **OAuth consent screen** → Scopes → add `.../auth/calendar` (full access — needed to create calendars, not just events). Keep the app in **Testing** mode and add your Google account(s) under **Test users** (up to 100).
+2. **OAuth consent screen** → Data access (Scopes) → add `.../auth/calendar` (full access — needed to create calendars, not just events), `.../auth/drive.file` (only files ShiftBoard creates) and `.../auth/gmail.send` (sends the monthly report; asked for only at someone's first Send). Keep the app in **Testing** mode and add your Google account(s) under **Test users** (up to 100).
 
 3. **Edit `config.js`** in this folder and paste your Client ID:
    ```js
@@ -32,7 +32,8 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 - **Save to Calendar** saves every week at once. It compares your selection with what the calendar had: newly selected types become all-day events titled `Event` or `Warehouse`, and types you turned off have that day's matching events deleted (duplicates included). Anything that fails stays marked so you can save again.
 - **Tap a date** to enter a shift's real start and end (it can run past midnight), mark a night slept at work (Event), add expenses, or add an **Other** job (times and amount required, description optional). An Other job never needs an Event or Warehouse that day: **+ Other job** in each week's header opens one directly, and tapping an empty day opens its form straight away. Entering times turns the calendar event from all-day into a timed one. A red banner lists past shifts from this month and last that still need their times.
 - **Pay** tab: connect Google Drive once and ShiftBoard creates a "ShiftBoard pay" sheet in your own Drive (it can only open files it creates). Enter your full name, the company email, the report language and your four rates; they're saved in the sheet's Settings tab. Each month shows every shift's pay, the total to pay (gross salary) and, kept apart from it, the expenses reimbursement (expenses are already taxed; the salary isn't). **Update my sheet** writes the month into its own tab (e.g. `2026-09`): name, month and year, the two totals, a small hours summary, then every shift. It never shows your rates. It asks first if that tab was changed by hand.
-- **Language:** the button at the top switches the app between English and Hebrew (right to left). It starts in the phone's language and each device remembers the choice. The report language is a separate choice in **Your details and rates**: Hebrew by default, or English. A report is always entirely one language. Calendar events stay titled `Event` / `Warehouse` either way.
+- **Send the month:** once every shift in a month has its times, **Review and send** shows who it goes to, the name on the report, the totals, and Google's own PDF of the month's tab (A4 landscape) to check. The first time, you confirm your name and the company email, and Google asks once to let ShiftBoard send email from your Gmail. **Send** emails the PDF from your own Gmail to the company email, in the report language, saves a copy in a "ShiftBoard" folder in your Drive and marks the month sent. A sent month keeps the rates it was sent with and says so if your calendar changes afterwards; **Reopen to correct** lets you fix it and send it again, marked "Corrected". A banner on the board reminds you when last month hasn't been sent.
+- **Language:** the button at the top switches the app between English and Hebrew (right to left). It starts in the phone's language and each device remembers the choice. The report language is a separate choice in **Your details and rates**: Hebrew by default, or English. A report is always entirely one language. Calendar events stay titled `Event` / `Warehouse` either way. In Hebrew the week starts on Sunday.
 - **Sign out** forgets this browser's session so a coworker can sign in with their own Google account. Each coworker has to be added under **Test users** first (step 2).
 
 ## Known limits
@@ -41,3 +42,4 @@ Client-only weekly scheduler: pick "Event" or "Warehouse" for each day, save as 
 - No offline/local storage of schedule data — Calendar is the source of truth.
 - If two ShiftBoard sessions edit the same week at once, last save wins.
 - Staying signed in longer than an hour would need a backend — a browser-only app can't safely hold a refresh token.
+- The PDF is Google's own export of the month's tab. If Google refuses the export, the review shows the error and nothing is sent.

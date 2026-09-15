@@ -79,6 +79,7 @@
     </div>
 
     <button id="needsTimesBtn" class="needs-times-banner" type="button" hidden></button>
+    <button id="sendReminderBtn" class="needs-times-banner send-reminder" type="button" hidden></button>
 
     <p id="calendarEmpty" class="notice" data-l-html="calendarEmpty" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
 
@@ -103,9 +104,16 @@
       </div>
       <p id="payStatus" class="pay-status" aria-live="polite"></p>
       <div id="payTotals" class="pay-totals"></div>
-      <div class="sheet-actions">
-        <button id="writeSheetBtn" class="btn-primary" type="button" data-l="updateSheet">Update my sheet</button>
-        <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" data-l="openSheet" hidden>Open in Google Sheets</a>
+      <div class="month-actions">
+        <p id="sendStatus" class="send-status" aria-live="polite" hidden></p>
+        <button id="useRatesBtn" class="btn-text use-rates" type="button" data-l="useCurrentRates" hidden>Use my current rates</button>
+        <div class="sheet-actions">
+          <button id="sendBtn" class="btn-primary" type="button" data-l="reviewSend" disabled>Review and send</button>
+          <button id="writeSheetBtn" class="btn-quiet" type="button" data-l="updateSheet">Update my sheet</button>
+          <button id="reopenBtn" class="btn-quiet" type="button" data-l="reopen" hidden>Reopen to correct</button>
+          <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" data-l="openSheet" hidden>Open in Google Sheets</a>
+          <a id="sentPdfLink" class="btn-text" target="_blank" rel="noopener" data-l="openSentPdf" hidden>Open the sent PDF</a>
+        </div>
       </div>
       <ol id="payLines" class="pay-lines"></ol>
 
