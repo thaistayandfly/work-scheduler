@@ -1,0 +1,4 @@
+# Preview pages, screenshots and other things the checks and tools generate
+tests/.out/
+node_modules/
+.DS_Store

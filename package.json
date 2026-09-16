@@ -1,0 +1,16 @@
+{
+  "name": "shiftboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A crew shift board that saves shifts to Google Calendar and sends each month's pay report to the company.",
+  "scripts": {
+    "test": "node tests/run.js",
+    "previews": "node tests/lib/preview.js",
+    "screenshots": "node tests/tools/screenshots.js",
+    "sheet-preview": "node tests/tools/sheet-preview.js",
+    "report-pages": "node tests/tools/report-pages.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -36,6 +36,17 @@ Client-only shift board: pick "Event" or "Warehouse" for each day and save them 
 - **Language:** the button at the top switches the app between English and Hebrew (right to left). It starts in the phone's language and each device remembers the choice. The report language is a separate choice in **Your details and rates**: Hebrew by default, or English. A report is always entirely one language. Calendar events stay titled `Event` / `Warehouse` either way. In Hebrew the week starts on Sunday.
 - **Sign out** forgets this browser's session so a coworker can sign in with their own Google account. Each coworker has to be added under **Test users** first (step 2).
 
+## Checks
+
+```bash
+node tests/run.js      # or: npm test
+```
+
+About 180 checks run against the real `app.js`, `i18n.js` and `index.html` in a minute — the pay rules, the
+report in both languages, the email, the PDF, and the app itself driven in headless Chrome on an emulated
+phone, with Google faked. [tests/README.md](tests/README.md) says what each one covers; GitHub Actions runs
+the same command on every push.
+
 ## Known limits
 
 - Testing-mode OAuth caps at 100 approved test users.
