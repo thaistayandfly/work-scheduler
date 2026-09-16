@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { buildPreviews } = require("../lib/preview");
-const { launch, fileUrl, sleep } = require("../lib/chrome");
+const { launch, fileUrl } = require("../lib/chrome");
 
 const ROOT = path.join(__dirname, "..", "..");
 const OUT = path.join(__dirname, "..", ".out");
@@ -16,7 +16,7 @@ const OUT = path.join(__dirname, "..", ".out");
   const chrome = await launch();
   try {
     const tab = await chrome.open(fileUrl(path.join(OUT, lang + "-loaded.html")));
-    await sleep(1200);
+    await tab.waitFor("window.__ready === true");
     const pages = await tab.evaluate(fs.readFileSync(path.join(__dirname, "..", "pages", "pdf-pages.js"), "utf8"));
     await tab.close();
     pages.forEach((dataUrl, i) => {

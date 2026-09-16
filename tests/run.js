@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { buildPreviews } = require("./lib/preview");
-const { launch, fileUrl, sleep } = require("./lib/chrome");
+const { launch, fileUrl } = require("./lib/chrome");
 
 const ROOT = path.join(__dirname, "..");
 const OUT = path.join(__dirname, ".out");
@@ -58,9 +58,10 @@ for (const [name, file] of CHECKS) {
   try {
     for (const [name, script, page] of IN_PAGE) {
       const tab = await chrome.open(fileUrl(path.join(OUT, page)));
-      await sleep(1200); // the preview taps its own way into the state being checked
       let lines;
       try {
+        // The preview taps its own way into the state being checked, then says it's there
+        if (!(await tab.waitFor("window.__ready === true"))) throw new Error("the preview never finished setting up");
         lines = await tab.evaluate(fs.readFileSync(path.join(__dirname, "pages", script), "utf8"));
       } catch (e) {
         lines = ["FAIL  the page stopped: " + e.message];

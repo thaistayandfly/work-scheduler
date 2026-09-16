@@ -7,7 +7,7 @@
 const fs = require("fs");
 const vm = require("vm");
 const path = require("path");
-const { launch, fileUrl, sleep } = require("../lib/chrome");
+const { launch, fileUrl } = require("../lib/chrome");
 
 const ROOT = path.join(__dirname, "..", "..");
 const OUT = path.join(__dirname, "..", ".out");
@@ -58,7 +58,7 @@ const drawn = ["he", "en"].map((lang) => {
   try {
     for (const tabPage of drawn) {
       const tab = await chrome.open(fileUrl(tabPage.file), { width: 1500, height: 1000, mobile: false });
-      await sleep(300);
+      await tab.waitFor("document.getElementById('fit').textContent.length > 0"); // filled once the fonts are ready
       const fit = await tab.evaluate("document.getElementById('fit').textContent");
       await tab.screenshot(path.join(OUT, "sheet-" + tabPage.lang + ".png"), { fullPage: true });
       await tab.close();

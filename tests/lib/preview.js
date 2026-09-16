@@ -38,6 +38,7 @@ function stub(scenario, lang) {
     Fixed.prototype = Real.prototype;
     window.Date = Fixed;
   })();
+  window.__ready = false;
   window.__requests = [];
   window.__mail = [];
   window.__uploads = [];
@@ -202,11 +203,15 @@ function stub(scenario, lang) {
       var pills = document.querySelectorAll("#board [data-type]");
       var labels = document.querySelectorAll("#board .day-label");
       var s = ${lang === "he" ? 1 : 0}; // a Hebrew week starts a day earlier, on Sunday
+      var after = 0; // how much longer this scenario needs after its first taps
       if (scenario === "dirty" || scenario === "error") {
         if (pills[4 + 2 * s]) pills[4 + 2 * s].click();   // Wednesday · Event
         if (pills[11 + 2 * s]) pills[11 + 2 * s].click(); // Saturday · Warehouse
         if (pills[7 + 2 * s]) pills[7 + 2 * s].click();   // Thursday · Warehouse (saved, so this removes it)
-        if (scenario === "error") setTimeout(function () { document.getElementById("saveBtn").click(); }, 100);
+        if (scenario === "error") {
+          after = 500;
+          setTimeout(function () { document.getElementById("saveBtn").click(); }, 100);
+        }
       }
       if (scenario === "panel" && labels[0 + s]) labels[0 + s].click();        // Monday: an Event with no times yet
       if (scenario === "panel-filled" && labels[1 + s]) labels[1 + s].click(); // Tuesday: a timed Warehouse and an Other job
@@ -215,12 +220,15 @@ function stub(scenario, lang) {
       if (scenario === "pay" || scenario === "pay-connect") document.getElementById("tabPay").click();
       if (scenario === "pay-settings") {
         document.getElementById("tabPay").click();
+        after = 800;
         setTimeout(function () {
           var box = document.getElementById("settingsBox");
           box.open = true;
           box.scrollIntoView();
         }, 500);
       }
+      // Checks and screenshots wait for this instead of guessing how long the page needed
+      setTimeout(function () { window.__ready = true; }, after);
     }, 400);
   });
 })();

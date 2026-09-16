@@ -32,44 +32,75 @@ function findChrome() {
   return found;
 }
 
+// On Linux /usr/bin/google-chrome is a shell script around the real browser, so killing what we
+// spawned would leave Chrome running; we start it in its own process group and take the group down.
+function kill(chrome) {
+  try {
+    if (process.platform !== "win32" && chrome.pid) process.kill(-chrome.pid, "SIGKILL");
+    else chrome.kill();
+  } catch (e) {
+    try {
+      chrome.kill("SIGKILL");
+    } catch (e2) {}
+  }
+}
+
 // Starts a headless Chrome and connects to it; resolve.open() gives one page at a time
 async function launch() {
-  const port = 9222 + Math.floor(Math.random() * 600);
+  const binary = findChrome();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "shiftboard-chrome-"));
   const chrome = spawn(
-    findChrome(),
+    binary,
     [
       "--headless=new",
       "--disable-gpu",
       "--hide-scrollbars",
       "--no-first-run",
       "--no-default-browser-check",
-      "--no-sandbox", // the CI runner is root; harmless elsewhere
-      "--disable-dev-shm-usage",
-      "--remote-debugging-port=" + port,
+      "--no-sandbox", // CI runners are root; harmless elsewhere
+      "--disable-dev-shm-usage", // CI gives /dev/shm 64MB, which Chrome outgrows
+      "--disable-background-networking",
+      "--remote-allow-origins=*",
+      "--remote-debugging-port=0", // Chrome takes a free port and writes down which
       "--user-data-dir=" + profile,
       "about:blank",
     ],
-    { stdio: "ignore" }
+    { stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" }
   );
 
-  let info = null;
-  for (let i = 0; i < 80 && !info; i++) {
+  // Keep whatever Chrome says: if it never comes up, this is the only explanation we'll get
+  let said = "";
+  chrome.stdout.on("data", (d) => (said += d));
+  chrome.stderr.on("data", (d) => (said += d));
+  let stopped = "";
+  chrome.on("error", (e) => (stopped = "it wouldn't start: " + e.message));
+  chrome.on("exit", (code, signal) => (stopped = "it exited straight away (" + (signal || "code " + code) + ")"));
+
+  // Once Chrome is listening it writes the port, then the browser's address, into this file
+  const portFile = path.join(profile, "DevToolsActivePort");
+  let target = "";
+  for (let i = 0; i < 180 && !target && !stopped; i++) {
     try {
-      info = await (await fetch("http://127.0.0.1:" + port + "/json/version")).json();
-    } catch (e) {
-      await sleep(250);
-    }
+      const [port, route] = fs.readFileSync(portFile, "utf8").split("\n");
+      if (port && port.trim() && route && route.trim()) target = "ws://127.0.0.1:" + port.trim() + route.trim();
+    } catch (e) {}
+    if (!target) await sleep(250);
   }
-  if (!info) {
-    chrome.kill();
-    throw new Error("Chrome's debugging port never came up");
+  if (!target) {
+    kill(chrome);
+    throw new Error(
+      "Chrome's debugging port never came up.\n    binary: " +
+        binary +
+        (stopped ? "\n    " + stopped : "") +
+        (said.trim() ? "\n    Chrome said: " + said.trim().split("\n").slice(-6).join("\n                 ") : "\n    Chrome said nothing at all.")
+    );
   }
 
-  const ws = new WebSocket(info.webSocketDebuggerUrl);
+  const ws = new WebSocket(target);
   await new Promise((resolve, reject) => {
     ws.onopen = resolve;
-    ws.onerror = reject;
+    ws.onerror = () =>
+      reject(new Error("Couldn't connect to Chrome at " + target + (said.trim() ? "\n    Chrome said: " + said.trim() : "")));
   });
   let nextId = 0;
   const pending = new Map();
@@ -118,6 +149,19 @@ async function launch() {
         if (res.exceptionDetails) throw new Error(JSON.stringify(res.exceptionDetails).slice(0, 600));
         return res.result.value;
       },
+      // Polls an expression until it's true: steadier than guessing how long a page needs
+      async waitFor(expression, ms = 20000) {
+        const until = Date.now() + ms;
+        while (Date.now() < until) {
+          let ready = false;
+          try {
+            ready = await this.evaluate(expression, { awaitPromise: false });
+          } catch (e) {}
+          if (ready) return true;
+          await sleep(100);
+        }
+        return false;
+      },
       async screenshot(file, { fullPage = false } = {}) {
         const params = { format: "png" };
         if (fullPage) {
@@ -139,7 +183,7 @@ async function launch() {
       try {
         ws.close();
       } catch (e) {}
-      chrome.kill();
+      kill(chrome);
     },
   };
 }

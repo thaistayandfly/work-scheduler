@@ -80,7 +80,8 @@ const PROBE = `(() => {
     for (const [scenario, width, height, scheme, fullPage] of shots) {
       const file = lang + "-" + scenario + "-" + width + "-" + scheme + (fullPage ? "-full" : "") + ".png";
       const tab = await chrome.open(fileUrl(path.join(OUT, lang + "-" + scenario + ".html")), { width, height, scheme, mobile: width < 700 });
-      await sleep(1500); // the preview taps its own way in; a tape pull takes 240ms
+      await tab.waitFor("window.__ready === true"); // the preview taps its own way in first
+      await sleep(300); // and a tape pull takes 240ms to finish drawing
       const seen = await tab.evaluate(PROBE);
       await tab.screenshot(path.join(OUT, file), { fullPage: !!fullPage });
       await tab.close();
