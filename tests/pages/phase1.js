@@ -41,8 +41,19 @@
   form.elements.slept.checked = true;
   buttonNamed(form, "Add an expense").click();
   const expense = form.querySelector(".expense");
+  const kinds = [...expense.querySelectorAll("option")].map((o) => o.textContent).join(" ");
+  check("Fuel is offered instead of Hotel", kinds === "Travel Fuel Food Other", kinds);
   expense.querySelector("select").value = "Travel";
   expense.querySelector("input").value = "250";
+  check("A named expense needs no description", expense.querySelector(".expense-note").hidden, "hidden=" + expense.querySelector(".expense-note").hidden);
+
+  buttonNamed(form, "Add an expense").click();
+  const loose = [...form.querySelectorAll(".expense")][1];
+  loose.querySelector("select").value = "Other";
+  loose.querySelector("select").dispatchEvent(new Event("change"));
+  check("Choosing Other offers a description", !loose.querySelector(".expense-note").hidden, "hidden=" + loose.querySelector(".expense-note").hidden);
+  loose.querySelector('input[type="number"]').value = "80";
+  loose.querySelector(".expense-note").value = "Parking at the venue";
   form.requestSubmit();
   await wait(400);
   const patch = window.__requests.find((r) => r.method === "PATCH");
@@ -53,10 +64,11 @@
     !!body && body.start.date === null && body.end.date === null && ymd(start) === rows[0].dataset.date && start.getHours() === 6 && ymd(end) === ymd(next) && end.getHours() === 4,
     patch ? patch.body : "no PATCH sent");
   const props = body ? body.extendedProperties.private : {};
-  check("The night and the expense are stored on the event",
-    props.workType === "Event" && props.appTag === "shiftboard" && props.slept === "1" && props.expenses === '[{"type":"Travel","amount":250}]',
+  check("The night and both expenses are stored on the event, the description with the loose one",
+    props.workType === "Event" && props.appTag === "shiftboard" && props.slept === "1" &&
+      props.expenses === '[{"type":"Travel","amount":250},{"type":"Other","amount":80,"note":"Parking at the venue"}]',
     JSON.stringify(props));
-  check("The panel closes and the board shows the new times", !panel.open && meta(0).textContent === "Event 06:00–04:00 (+1), night, ₪250.00 expenses" && !meta(0).classList.contains("needs-times"),
+  check("The panel closes and the board shows the new times", !panel.open && meta(0).textContent === "Event 06:00–04:00 (+1), night, ₪330.00 expenses" && !meta(0).classList.contains("needs-times"),
     "open=" + panel.open + " meta=" + meta(0).textContent);
   check("The banner count drops after saving", banner.textContent === "2 past shifts still need their times", banner.textContent);
 

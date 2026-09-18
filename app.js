@@ -8,7 +8,9 @@ const SCOPES = CALENDAR_SCOPE + " " + DRIVE_SCOPE + " email";
 const APP_TAG = "shiftboard";
 const WORK_TYPES = ["Event", "Warehouse"];
 const OTHER = "Other"; // the rare one-off paid job, kept off the two main tapes
-const EXPENSE_TYPES = ["Travel", "Food", "Hotel", "Other"];
+// "Hotel" was here once. It's gone from the picker but still translated, so an expense saved back then
+// keeps its name on the report and in the row that opens it.
+const EXPENSE_TYPES = ["Travel", "Fuel", "Food", "Other"];
 const MIN_RESTORE_MS = 5 * 60 * 1000; // skip restoring a saved token that's about to expire
 const WEEKS_PER_PAGE = 4; // weeks on the board at first, and how many "Show 4 more weeks" adds
 
@@ -941,7 +943,15 @@ function expenseRow(x) {
     opt.textContent = L.expenseTypes[t];
     select.appendChild(opt);
   });
-  select.value = EXPENSE_TYPES.includes(x.type) ? x.type : "Other";
+  // A type this version no longer offers (an old "Hotel") keeps its own option, so opening a shift
+  // to change its times can't quietly relabel what was spent
+  if (x.type && !EXPENSE_TYPES.includes(x.type)) {
+    const opt = document.createElement("option");
+    opt.value = x.type;
+    opt.textContent = L.expenseTypes[x.type] || x.type;
+    select.appendChild(opt);
+  }
+  select.value = x.type || "Other";
   const amount = document.createElement("input");
   amount.type = "number";
   amount.min = "0";
@@ -950,7 +960,21 @@ function expenseRow(x) {
   amount.placeholder = "₪";
   amount.setAttribute("aria-label", L.expenseAmount);
   amount.value = x.amount;
-  row.append(select, amount, makeButton(L.remove, "btn-text", () => row.remove()));
+
+  // "Other" says nothing on its own, so it can carry a description. Never required.
+  const note = document.createElement("input");
+  note.type = "text";
+  note.className = "expense-note";
+  note.maxLength = 60;
+  note.dir = "auto";
+  note.placeholder = L.expenseNote;
+  note.setAttribute("aria-label", L.expenseNote);
+  note.value = x.note || "";
+  note.hidden = select.value !== "Other";
+  // Kept, not cleared, when the type changes: switching back shouldn't lose what was typed
+  select.addEventListener("change", () => (note.hidden = select.value !== "Other"));
+
+  row.append(select, amount, makeButton(L.remove, "btn-text", () => row.remove()), note);
   return row;
 }
 
@@ -967,7 +991,13 @@ function submitShiftForm(form, type, event) {
   if (end <= start) return fail(L.errEndAfterStart);
 
   const expenses = [...form.querySelectorAll(".expense")]
-    .map((row) => ({ type: row.querySelector("select").value, amount: Number(row.querySelector("input").value) }))
+    .map((row) => {
+      const kind = row.querySelector("select").value;
+      const spent = { type: kind, amount: Number(row.querySelector('input[type="number"]').value) };
+      const said = row.querySelector(".expense-note").value.trim();
+      if (kind === "Other" && said) spent.note = said; // only where it means anything
+      return spent;
+    })
     .filter((x) => x.amount > 0);
   const extras = { expenses: JSON.stringify(expenses) };
   if (type === "Event") extras.slept = f.slept.checked ? "1" : "0";
@@ -1279,7 +1309,9 @@ function monthTable(monthDate, lines, totals, s, lang, corrected) {
     const details = [];
     const note = privateProps(line.event).note;
     if (line.type === OTHER && note) details.push(note);
-    expensesOf(line.event).forEach((x) => details.push((T.expenseTypes[x.type] || x.type) + " ₪" + x.amount));
+    expensesOf(line.event).forEach((x) =>
+      details.push((T.expenseTypes[x.type] || x.type) + (x.note ? " (" + x.note + ")" : "") + " ₪" + x.amount)
+    );
     if (line.missingTimes) details.push(T.noTimes);
     rows.push([
       pad(day.getDate()) + "/" + pad(day.getMonth() + 1) + "/" + day.getFullYear(),

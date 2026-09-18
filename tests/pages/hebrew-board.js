@@ -53,7 +53,7 @@
   check("Durations are in Hebrew", forms[0].querySelector(".duration").textContent === "8 ש׳ 30 דק׳", forms[0].querySelector(".duration").textContent);
   forms[0].querySelector(".expenses .btn-text").click();
   const options = [...forms[0].querySelectorAll(".expense option")].map((o) => o.textContent).join(" ");
-  check("Expense types are in Hebrew", options === "נסיעות אוכל מלון אחר", options);
+  check("Expense types are in Hebrew, fuel among them", options === "נסיעות דלק אוכל אחר", options);
   const panelEnglish = englishIn(panel);
   check("No English words in the panel", panelEnglish.length === 0, panelEnglish.slice(0, 10).join(", "));
   forms[0].elements.endTime.value = "";

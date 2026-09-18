@@ -1105,6 +1105,11 @@ html:has(dialog[open]) {
   gap: var(--s2);
 }
 
+/* The description for an "Other" expense takes the whole width under its row */
+.expense-note {
+  grid-column: 1 / -1;
+}
+
 .expenses > .btn-text {
   justify-self: start;
 }
