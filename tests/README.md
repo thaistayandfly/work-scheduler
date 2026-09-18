@@ -19,6 +19,7 @@ Chrome is found automatically; set `CHROME=/path/to/chrome` if yours lives somew
 | `pay.js` | Pay rules per shift and per month, both report languages, the email as Gmail receives it, the PDF file itself, the name-language rule |
 | `flow.js` | Signing in and out, the board across weeks, saving and deleting, duplicates, switching calendars, switching language |
 | `dates.js` | Every day card maps to its own calendar date, including the weeks the clocks change |
+| `offline.js` | The manifest, the icons it names (and their real sizes), and the files the service worker keeps |
 
 **In real Chrome** (`tests/pages/`, run inside a preview page on an emulated phone):
 
@@ -33,6 +34,11 @@ Chrome is found automatically; set `CHROME=/path/to/chrome` if yours lives somew
 | `hebrew-board.js`, `hebrew-pay.js` | The app in Hebrew, right to left, with no English left over |
 
 `review.js`, `pdf-pages.js` and `wait.js` aren't checks: the tools below drive them to produce screenshots.
+
+**With the network cut** (in `run.js` itself): a browser only allows a service worker on a page it trusts, and
+`file://` isn't one, so this last check serves the real site over localhost, waits for the service worker to
+take charge, switches the network off in the browser, and asks the page for its own files. It also asks for a
+Google URL and expects that to fail — shifts must never come from a cache.
 
 ## How the preview pages work
 

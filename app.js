@@ -2504,3 +2504,18 @@ function showToast(msg, isError) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), isError ? 6000 : 3000);
 }
+
+// ---------- Working offline ----------
+
+// The service worker is what lets someone open ShiftBoard on a site with no signal, and what makes the
+// phone offer to install it. Browsers only allow one on a secure page, so a file:// preview or an older
+// browser simply carries on without one — nothing else in the app depends on it.
+const secureEnough =
+  typeof location !== "undefined" &&
+  (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1");
+
+if (typeof navigator !== "undefined" && navigator.serviceWorker && secureEnough) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
