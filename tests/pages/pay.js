@@ -93,6 +93,26 @@
   form.requestSubmit();
   await wait(400);
   check("Saving puts you back on the month you came from", !$("payView").hidden && $("settingsView").hidden, "pay=" + !$("payView").hidden);
+
+  // The form is refilled from the sheet each time it opens, so walking away from an edit would lose it
+  $("settingsBtn").click();
+  await wait(150);
+  form.elements.rate_night.value = "777";
+  window.confirm = () => false;
+  $("tabPay").click();
+  await wait(100);
+  check("Leaving with a detail unsaved asks first, and staying keeps what was typed",
+    !$("settingsView").hidden && form.elements.rate_night.value === "777",
+    "settings=" + !$("settingsView").hidden + " value=" + form.elements.rate_night.value);
+  window.confirm = () => true;
+  $("tabPay").click();
+  await wait(400);
+  check("Choosing to leave anyway does leave", $("settingsView").hidden && !$("payView").hidden, "settings=" + !$("settingsView").hidden);
+  $("settingsBtn").click();
+  await wait(200);
+  check("Coming back shows the saved rate, not the abandoned one", form.elements.rate_night.value === "200", form.elements.rate_night.value);
+  $("tabPay").click();
+  await wait(300);
   const put = window.__requests.filter((r) => r.method === "PUT" && r.url.includes("/values/Settings")).pop();
   const rows = put ? JSON.parse(put.body).values : [];
   const row = (key) => rows.find((r) => r[2] === key) || [];

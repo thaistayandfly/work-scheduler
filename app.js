@@ -154,7 +154,7 @@ window.addEventListener("load", () => {
   el("langBtn").addEventListener("click", switchLanguage);
   el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
-    if (isDirty()) {
+    if (isDirty() || settingsDirty()) {
       e.preventDefault();
       e.returnValue = true;
     }
@@ -1580,6 +1580,9 @@ let pendingView = null; // the view to return to after signing in again (e.g. to
 let viewBeforeSettings = "shifts"; // where the settings were opened from
 
 function showView(view) {
+  // Leaving the settings with something typed but not saved: ask first, the way the board does.
+  // The form is refilled from the sheet every time it opens, so walking away would lose it silently.
+  if (view !== "settings" && !el("settingsView").hidden && !confirmLeaveSettings()) return;
   const pay = view === "pay";
   const setup = view === "settings";
   el("tabShifts").setAttribute("aria-pressed", String(!pay && !setup));
@@ -1648,6 +1651,24 @@ function fillSettingsForm(s) {
   f.report_language.value = reportLanguage(s);
   el("fullNameLabel").textContent = L.fullNameIn(reportLanguage(s));
   checkSettingsName();
+  settingsAsFilled = snapshotSettingsForm();
+}
+
+// What the form held when it was last filled or saved. Comparing against the saved settings directly
+// wouldn't do: the form normalises the report language, so it would read as changed the moment it opened.
+let settingsAsFilled = null;
+
+function snapshotSettingsForm() {
+  const f = el("settingsForm").elements;
+  return SETTING_KEYS.map((key) => String(f[key].value).trim()).join(" ");
+}
+
+function settingsDirty() {
+  return settingsAsFilled !== null && !el("settingsView").hidden && snapshotSettingsForm() !== settingsAsFilled;
+}
+
+function confirmLeaveSettings() {
+  return !settingsDirty() || confirm(L.discardDetails);
 }
 
 // The name has to be there, and in the report's own letters, before any of this can be saved — so the
@@ -1683,6 +1704,7 @@ function submitSettings(e) {
   saveSettings(values)
     .then(() => {
       showToast(L.savedToSheet);
+      settingsAsFilled = snapshotSettingsForm(); // what's on screen is what's saved now, so nothing to ask about
       showView(viewBeforeSettings); // back where they came from, with the new details in hand
     })
     .catch((err) => showApiError(L.errSaveDetails, err))
