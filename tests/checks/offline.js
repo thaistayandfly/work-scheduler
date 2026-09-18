@@ -3,6 +3,7 @@
 // icons it names, the list of files the service worker keeps, and the page and app that tie them together.
 const fs = require("fs");
 const path = require("path");
+const vm = require("vm");
 
 const ROOT = path.dirname(process.argv[2] || path.join(__dirname, "..", "..", "app.js"));
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
@@ -86,5 +87,19 @@ is(
   "It only does so over https, so file:// previews still work",
   "It should only register over https, or the preview pages break"
 );
+
+// Saying "you're offline" is no use if it only says it in one language
+const words = vm.createContext({});
+vm.runInContext(read("i18n.js"), words);
+const UI = vm.runInContext("typeof UI_TEXT !== 'undefined' ? UI_TEXT : null", words);
+if (!UI) {
+  bad("Couldn't read the words out of i18n.js");
+} else {
+  ["offlineBanner", "offlineToast", "backOnline"].forEach((key) => {
+    const en = UI.en && UI.en[key];
+    const he = UI.he && UI.he[key];
+    is(en && he, "Both languages have the words for " + key, key + " is missing in " + (en ? "Hebrew" : "English"));
+  });
+}
 
 process.exitCode = failed ? 1 : 0;

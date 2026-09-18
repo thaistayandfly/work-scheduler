@@ -75,6 +75,10 @@ async function offlineChecks(chrome) {
     if (took) {
       await tab.send("Network.enable");
       await tab.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+
+      const told = await tab.waitFor("(() => { const b = document.getElementById('offlineBanner'); return !!b && !b.hidden; })()", 8000);
+      lines.push(told ? "PASS  It says plainly that you're offline" : "FAIL  Nothing tells the user they're offline");
+
       const seen = await tab.evaluate(`(async () => {
         const out = [];
         try {
@@ -94,6 +98,9 @@ async function offlineChecks(chrome) {
       })()`);
       lines.push.apply(lines, seen);
       await tab.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+
+      const cleared = await tab.waitFor("(() => { const b = document.getElementById('offlineBanner'); return !!b && b.hidden; })()", 8000);
+      lines.push(cleared ? "PASS  The notice goes when the signal comes back" : "FAIL  The offline notice stayed up after reconnecting");
     }
     await tab.close();
   } finally {

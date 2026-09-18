@@ -800,6 +800,19 @@ body:not(.is-signed-in) .toast {
   text-align: start;
 }
 
+/* Being offline is a state, not a failure, so it wears the pencilled note rather than the red pen */
+.offline-banner {
+  width: 100%;
+  margin-block-end: var(--s4);
+  padding: var(--s3) var(--s4);
+  border: 2px dashed var(--slot-line);
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: start;
+}
+
 button.day-label {
   min-height: 48px;
   padding-inline: 0;

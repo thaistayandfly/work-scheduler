@@ -297,10 +297,33 @@ function apiFetch(url, options = {}) {
   });
 }
 
+// fetch() rejects with a TypeError when the request never left the phone at all. Every browser words
+// that differently ("Failed to fetch", "Load failed"), and none of them mean anything to a coworker.
+function isNetworkError(err) {
+  return (
+    err instanceof TypeError ||
+    /failed to fetch|networkerror|network request failed|load failed/i.test((err && err.message) || "")
+  );
+}
+
+const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+
+function showOffline(on) {
+  const banner = el("offlineBanner");
+  if (banner) banner.hidden = !on;
+}
+
 // Skips the toast when apiFetch just signed the user out — it already said "Session expired"
 function showApiError(prefix, err) {
   console.error("ShiftBoard: " + prefix, err);
-  if (accessToken) showToast(prefix + ": " + err.message, true);
+  if (!accessToken) return;
+  // "Couldn't load your shifts: Failed to fetch" tells nobody anything. Name the real reason instead.
+  if (isNetworkError(err) || isOffline()) {
+    showOffline(true);
+    showToast(L.offlineToast, true);
+    return;
+  }
+  showToast(prefix + ": " + err.message, true);
 }
 
 function resetToSignedOut() {
@@ -2518,4 +2541,18 @@ if (typeof navigator !== "undefined" && navigator.serviceWorker && secureEnough)
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   });
+}
+
+// The browser says the moment the signal goes and comes back. Nothing is reloaded behind someone's back
+// while they're offline, but the board and the open month catch up by themselves once there's a connection.
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("offline", () => showOffline(true));
+  window.addEventListener("online", () => {
+    showOffline(false);
+    if (!accessToken) return;
+    showToast(L.backOnline);
+    loadWeeks(weeks);
+    if (!el("payView").hidden) renderPayMonth();
+  });
+  showOffline(isOffline());
 }
