@@ -1105,7 +1105,14 @@ html:has(dialog[open]) {
   gap: var(--s2);
 }
 
-/* The description for an "Other" expense takes the whole width under its row */
+/* An expense and its description are one thing, so the pair is boxed together rather than
+   left looking like two unrelated rows */
+.expense:has(.expense-note:not([hidden])) {
+  padding: var(--s2);
+  border: 1.5px dashed var(--rule);
+  border-radius: var(--radius-field);
+}
+
 .expense-note {
   grid-column: 1 / -1;
 }

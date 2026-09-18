@@ -54,6 +54,13 @@
   forms[0].querySelector(".expenses .btn-text").click();
   const options = [...forms[0].querySelectorAll(".expense option")].map((o) => o.textContent).join(" ");
   check("Expense types are in Hebrew, fuel among them", options === "נסיעות דלק אוכל אחר", options);
+  const kind = forms[0].querySelector(".expense select");
+  kind.value = "Other";
+  kind.dispatchEvent(new Event("change"));
+  const said = forms[0].querySelector(".expense-note");
+  check("The Hebrew description box reads right to left", getComputedStyle(said).direction === "rtl", getComputedStyle(said).direction);
+  check("The expense and its description are boxed together",
+    getComputedStyle(said.closest(".expense")).borderStyle === "dashed", getComputedStyle(said.closest(".expense")).borderStyle);
   const panelEnglish = englishIn(panel);
   check("No English words in the panel", panelEnglish.length === 0, panelEnglish.slice(0, 10).join(", "));
   forms[0].elements.endTime.value = "";

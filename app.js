@@ -132,9 +132,16 @@ window.addEventListener("load", () => {
   el("prevMonth").addEventListener("click", () => changePayMonth(-1));
   el("nextMonth").addEventListener("click", () => changePayMonth(1));
   el("settingsForm").addEventListener("submit", submitSettings);
-  // The name's language follows the report language picked in the form
+  // The name's language follows the report language picked in the form, and says so the moment it's
+  // picked: leaving it until Save would let someone switch language, walk away, and find out much later
   el("settingsForm").addEventListener("change", (e) => {
-    if (e.target.name === "report_language") el("fullNameLabel").textContent = L.fullNameIn(e.target.value);
+    if (e.target.name !== "report_language") return;
+    const form = el("settingsForm");
+    el("fullNameLabel").textContent = L.fullNameIn(e.target.value);
+    const problem = nameProblem({ full_name: form.elements.full_name.value, report_language: e.target.value });
+    const error = form.querySelector(".form-error");
+    error.textContent = problem;
+    error.hidden = !problem;
   });
   el("writeSheetBtn").addEventListener("click", updateSheet);
   el("sendBtn").addEventListener("click", openSendPanel);
@@ -966,7 +973,8 @@ function expenseRow(x) {
   note.type = "text";
   note.className = "expense-note";
   note.maxLength = 60;
-  note.dir = "auto";
+  // No dir="auto" here: with nothing typed yet there's no strong character to go on, so the browser
+  // falls back to left-to-right and renders the Hebrew placeholder backwards. Inheriting the page is right.
   note.placeholder = L.expenseNote;
   note.setAttribute("aria-label", L.expenseNote);
   note.value = x.note || "";

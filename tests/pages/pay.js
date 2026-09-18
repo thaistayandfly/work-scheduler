@@ -54,6 +54,24 @@
     form.querySelector(".form-error").textContent === "The report is in Hebrew, so write your full name in Hebrew letters." &&
       $("fullNameLabel").textContent === "Full name in Hebrew, as the company knows you",
     form.querySelector(".form-error").textContent + " / " + $("fullNameLabel").textContent);
+  // Switching the report language has to say so at once, not save it up for the Save button
+  const flag = () => form.querySelector(".form-error");
+  const pickLanguage = (v) => {
+    form.elements.report_language.value = v;
+    form.elements.report_language.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  pickLanguage("en");
+  check("An English report with a Latin name clears the warning as soon as it's picked",
+    flag().hidden && $("fullNameLabel").textContent === "Full name in English, as the company knows you",
+    flag().textContent + " / " + $("fullNameLabel").textContent);
+  form.elements.full_name.value = "אלכס מורגן";
+  pickLanguage("en");
+  check("A Hebrew name on an English report is flagged the moment the language is picked",
+    !flag().hidden && flag().textContent === "The report is in English, so write your full name in English letters.",
+    flag().textContent);
+  pickLanguage("he");
+  check("Putting the report back to Hebrew clears it again", flag().hidden, flag().textContent);
+
   form.elements.full_name.value = "אלכס מורגן";
   form.elements.rate_warehouse.value = "60";
   form.requestSubmit();
