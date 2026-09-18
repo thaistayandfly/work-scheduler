@@ -78,7 +78,10 @@ const UI_TEXT = {
 
     // Saving the board
     discard: "You have shifts that aren't saved yet. Discard them?",
-    discardDetails: "Your details aren't saved yet. Leave without saving?",
+    discardDetails: "Your details aren't saved yet. If you leave now, what you typed is lost.",
+    unsavedTitle: "Unsaved details",
+    leaveWithoutSaving: "Leave without saving",
+    keepEditing: "Keep editing",
     savingCalendar: "Saving to Google Calendar…",
     toAdd: (n) => n + " to add",
     toRemove: (n) => n + " to remove",
@@ -266,7 +269,10 @@ const UI_TEXT = {
     errLoadShifts: "לא הצלחנו לטעון את המשמרות",
 
     discard: "יש משמרות שעוד לא נשמרו. לוותר עליהן?",
-    discardDetails: "הפרטים עוד לא נשמרו. לצאת בלי לשמור?",
+    discardDetails: "הפרטים עוד לא נשמרו. אם תצאו עכשיו, מה שהקלדתם יאבד.",
+    unsavedTitle: "פרטים שלא נשמרו",
+    leaveWithoutSaving: "לצאת בלי לשמור",
+    keepEditing: "להמשיך לערוך",
     savingCalendar: "שומר ביומן Google…",
     toAdd: (n) => n + " להוספה",
     toRemove: (n) => n + " להסרה",

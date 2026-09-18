@@ -1579,10 +1579,18 @@ let payMonth = null; // the 1st of the month shown on the Pay view
 let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
 let viewBeforeSettings = "shifts"; // where the settings were opened from
 
+// Leaving the settings with something typed but not saved: ask first. The form is refilled from the sheet
+// every time it opens, so walking away would lose it silently. The question is asked in the app's own
+// panel, and an answer to that arrives later — which is why moving the view is split out below.
 function showView(view) {
-  // Leaving the settings with something typed but not saved: ask first, the way the board does.
-  // The form is refilled from the sheet every time it opens, so walking away would lose it silently.
-  if (view !== "settings" && !el("settingsView").hidden && !confirmLeaveSettings()) return;
+  if (view !== "settings" && settingsDirty()) {
+    askToLeaveSettings(() => openView(view));
+    return;
+  }
+  openView(view);
+}
+
+function openView(view) {
   const pay = view === "pay";
   const setup = view === "settings";
   el("tabShifts").setAttribute("aria-pressed", String(!pay && !setup));
@@ -1667,8 +1675,23 @@ function settingsDirty() {
   return settingsAsFilled !== null && !el("settingsView").hidden && snapshotSettingsForm() !== settingsAsFilled;
 }
 
-function confirmLeaveSettings() {
-  return !settingsDirty() || confirm(L.discardDetails);
+// The browser's own confirm() box looks nothing like the app, so this asks in the panel the rest of the
+// app uses. Closing it any other way — the X, Escape, tapping outside — means "keep editing", which is
+// the safe answer. Leaving is the quiet button; staying is the one under your thumb.
+function askToLeaveSettings(leave) {
+  const panel = openPanel(L.unsavedTitle);
+  panel.appendChild(textEl("p", "panel-note", L.discardDetails));
+  const actions = document.createElement("div");
+  actions.className = "form-actions";
+  actions.append(
+    makeButton(L.leaveWithoutSaving, "btn-text", () => {
+      panel.close();
+      leave();
+    }),
+    makeButton(L.keepEditing, "btn-primary", () => panel.close())
+  );
+  panel.appendChild(actions);
+  panel.showModal();
 }
 
 // The name has to be there, and in the report's own letters, before any of this can be saved — so the

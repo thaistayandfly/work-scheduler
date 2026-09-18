@@ -98,14 +98,22 @@
   $("settingsBtn").click();
   await wait(150);
   form.elements.rate_night.value = "777";
-  window.confirm = () => false;
   $("tabPay").click();
-  await wait(100);
-  check("Leaving with a detail unsaved asks first, and staying keeps what was typed",
-    !$("settingsView").hidden && form.elements.rate_night.value === "777",
+  await wait(150);
+  const ask = $("dayPanel");
+  const inPanel = (text) => [...ask.querySelectorAll("button")].find((b) => b.textContent === text);
+  check("Leaving with a detail unsaved asks in the app's own panel, not a browser box",
+    ask.open && ask.querySelector(".panel-head h2").textContent === "Unsaved details" && !!inPanel("Keep editing") && !!inPanel("Leave without saving"),
+    "open=" + ask.open + " title=" + ((ask.querySelector(".panel-head h2") || {}).textContent || ""));
+  inPanel("Keep editing").click();
+  await wait(150);
+  check("Keeping it open stays on the settings, with what was typed still there",
+    !ask.open && !$("settingsView").hidden && form.elements.rate_night.value === "777",
     "settings=" + !$("settingsView").hidden + " value=" + form.elements.rate_night.value);
-  window.confirm = () => true;
+
   $("tabPay").click();
+  await wait(150);
+  inPanel("Leave without saving").click();
   await wait(400);
   check("Choosing to leave anyway does leave", $("settingsView").hidden && !$("payView").hidden, "settings=" + !$("settingsView").hidden);
   $("settingsBtn").click();
