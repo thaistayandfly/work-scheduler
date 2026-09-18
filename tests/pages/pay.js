@@ -43,6 +43,22 @@
   check("Details and rates come from the pay sheet",
     form.elements.full_name.value === "אלכס מורגן" && form.elements.rate_event.value === "600",
     form.elements.full_name.value + " / " + form.elements.rate_event.value);
+  // The name gates the button, so nobody presses Save only to be told no
+  const saveBtn = () => form.querySelector('[type="submit"]');
+  const typeName = (v) => {
+    form.elements.full_name.value = v;
+    form.elements.full_name.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  check("Save is ready while the saved name fits", !saveBtn().disabled, "disabled=" + saveBtn().disabled);
+  typeName("");
+  check("Save goes out of reach with no name", saveBtn().disabled, "disabled=" + saveBtn().disabled);
+  typeName("Alex Morgan");
+  check("Save stays out of reach while the name is in the wrong letters",
+    saveBtn().disabled && form.querySelector(".form-error").textContent === "The report is in Hebrew, so write your full name in Hebrew letters.",
+    "disabled=" + saveBtn().disabled + " / " + form.querySelector(".form-error").textContent);
+  typeName("אלכס מורגן");
+  check("Save comes back once the name fits the report", !saveBtn().disabled && form.querySelector(".form-error").hidden, "disabled=" + saveBtn().disabled);
+
   form.elements.full_name.value = "";
   form.requestSubmit();
   await wait(50);

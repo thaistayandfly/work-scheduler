@@ -136,12 +136,11 @@ window.addEventListener("load", () => {
   // picked: leaving it until Save would let someone switch language, walk away, and find out much later
   el("settingsForm").addEventListener("change", (e) => {
     if (e.target.name !== "report_language") return;
-    const form = el("settingsForm");
     el("fullNameLabel").textContent = L.fullNameIn(e.target.value);
-    const problem = nameProblem({ full_name: form.elements.full_name.value, report_language: e.target.value });
-    const error = form.querySelector(".form-error");
-    error.textContent = problem;
-    error.hidden = !problem;
+    checkSettingsName();
+  });
+  el("settingsForm").addEventListener("input", (e) => {
+    if (e.target.name === "full_name") checkSettingsName();
   });
   el("writeSheetBtn").addEventListener("click", updateSheet);
   el("sendBtn").addEventListener("click", openSendPanel);
@@ -1648,11 +1647,20 @@ function fillSettingsForm(s) {
   SETTING_KEYS.forEach((key) => (f[key].value = s[key] || ""));
   f.report_language.value = reportLanguage(s);
   el("fullNameLabel").textContent = L.fullNameIn(reportLanguage(s));
-  // A name saved before the language rule, or typed into the sheet by hand, in the wrong letters: say so here
-  const problem = nameProblem(s);
+  checkSettingsName();
+}
+
+// The name has to be there, and in the report's own letters, before any of this can be saved — so the
+// button says so by staying out of reach, rather than being pressed and refusing. A name saved before
+// this rule existed, or typed into the sheet by hand, is caught the same way when the form opens.
+function checkSettingsName() {
+  const form = el("settingsForm");
+  const name = form.elements.full_name.value;
+  const problem = nameProblem({ full_name: name, report_language: form.elements.report_language.value });
   const error = form.querySelector(".form-error");
   error.textContent = problem;
   error.hidden = !problem;
+  form.querySelector('[type="submit"]').disabled = !name.trim() || !!problem;
 }
 
 function submitSettings(e) {
@@ -1678,7 +1686,7 @@ function submitSettings(e) {
       showView(viewBeforeSettings); // back where they came from, with the new details in hand
     })
     .catch((err) => showApiError(L.errSaveDetails, err))
-    .finally(() => (btn.disabled = false));
+    .finally(checkSettingsName); // re-derived from what's in the form, not blindly re-enabled
 }
 
 function changePayMonth(delta) {
