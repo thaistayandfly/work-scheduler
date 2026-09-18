@@ -248,6 +248,26 @@ button {
   flex-shrink: 0;
 }
 
+.icon-btn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.icon-btn[aria-pressed="true"] {
+  background: var(--rule);
+  color: var(--ink);
+}
+
 /* An address reads left to right in a Hebrew page too, and is cut at its end */
 .account-email {
   direction: ltr;
@@ -382,6 +402,43 @@ button {
 
 .settings-form select {
   background: var(--board); /* like the other settings fields */
+}
+
+/* The board names the calendar it writes to, instead of the picker sitting at the top every visit */
+.saving-to {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* ---------- Settings: set up once ---------- */
+
+.settings-view {
+  display: grid;
+  gap: var(--s5);
+  padding-top: var(--s4);
+}
+
+.view-title {
+  font: 700 1.5rem/1.05 var(--font-label);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pay-setup {
+  display: grid;
+  justify-items: start;
+  gap: var(--s3);
 }
 
 .earlier {
@@ -1303,16 +1360,18 @@ body.is-pay .toast {
   font-variant-numeric: tabular-nums;
 }
 
-.settings {
+/* The occasional things — update the sheet, open it, open the sent PDF — folded away so the month
+   has one obvious action on it */
+.more-actions {
   padding-top: var(--s3);
-  border-top: 2px solid var(--ink);
+  border-top: 1.5px solid var(--rule);
 }
 
-.settings summary::-webkit-details-marker {
+.more-actions summary::-webkit-details-marker {
   display: none;
 }
 
-.settings summary::after {
+.more-actions summary::after {
   content: "";
   width: 14px;
   height: 14px;
@@ -1322,7 +1381,7 @@ body.is-pay .toast {
   transition: transform 150ms var(--ease-out);
 }
 
-.settings[open] summary::after {
+.more-actions[open] summary::after {
   transform: rotate(180deg);
 }
 
@@ -1412,21 +1471,23 @@ a.btn-text {
   margin: 0;
 }
 
-.sheet-actions {
+.more-list {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
+  padding-top: var(--s3);
 }
 
-.settings summary {
+.more-actions summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   list-style: none;
   min-height: 44px;
   cursor: pointer;
-  font: 700 1.125rem/1 var(--font-label);
+  color: var(--ink-2);
+  font: 700 0.9375rem/1 var(--font-label);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

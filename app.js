@@ -105,6 +105,7 @@ window.addEventListener("load", () => {
     }
     selectedCalendarId = e.target.value;
     localStorage.setItem("sb_calendarId", selectedCalendarId);
+    updateSavingTo();
     resetBoard();
   });
   el("saveBtn").addEventListener("click", saveChanges);
@@ -114,6 +115,16 @@ window.addEventListener("load", () => {
   el("tabPay").addEventListener("click", () => showView("pay"));
   el("connectDriveBtn").addEventListener("click", () => {
     pendingView = "pay"; // come back to Pay once the Drive permission is granted
+    signIn();
+  });
+  el("settingsBtn").addEventListener("click", () => {
+    if (el("settingsView").hidden) openSettings();
+    else showView(viewBeforeSettings);
+  });
+  el("savingToBtn").addEventListener("click", openSettings);
+  el("paySetupBtn").addEventListener("click", openSettings);
+  el("settingsConnectBtn").addEventListener("click", () => {
+    pendingView = "settings";
     signIn();
   });
   el("prevMonth").addEventListener("click", () => changePayMonth(-1));
@@ -248,9 +259,13 @@ function showSignedIn(signedIn) {
   el("saveBar").hidden = !signedIn;
   el("account").hidden = !signedIn;
   el("viewTabs").hidden = !signedIn;
+  el("settingsBtn").hidden = !signedIn;
+  el("savingToBtn").hidden = !signedIn;
   el("payView").hidden = true; // every sign-in starts on the Shifts view
+  el("settingsView").hidden = true;
   el("tabShifts").setAttribute("aria-pressed", "true");
   el("tabPay").setAttribute("aria-pressed", "false");
+  el("settingsBtn").setAttribute("aria-pressed", "false");
   document.body.classList.toggle("is-pay", false);
 }
 
@@ -359,6 +374,7 @@ function loadCalendars() {
       localStorage.setItem("sb_calendarId", selectedCalendarId);
       select.value = selectedCalendarId;
       el("calendarEmpty").hidden = calendars.length > 0;
+      updateSavingTo();
       if (calendars.length) resetBoard();
       else clearBoard();
     })
@@ -1496,7 +1512,7 @@ function updateSheet() {
   const problem = nameProblem(settings); // never a name in the other language on the sheet
   if (problem) {
     showToast(problem, true);
-    el("settingsBox").open = true;
+    openSettings();
     return;
   }
   const btn = el("writeSheetBtn");
@@ -1522,16 +1538,46 @@ function updateSheet() {
 const SETTING_KEYS = ["full_name", "company_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
 let payMonth = null; // the 1st of the month shown on the Pay view
 let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
+let viewBeforeSettings = "shifts"; // where the settings were opened from
 
 function showView(view) {
   const pay = view === "pay";
-  el("tabShifts").setAttribute("aria-pressed", String(!pay));
+  const setup = view === "settings";
+  el("tabShifts").setAttribute("aria-pressed", String(!pay && !setup));
   el("tabPay").setAttribute("aria-pressed", String(pay));
-  el("workspace").hidden = pay;
-  el("saveBar").hidden = pay;
+  el("settingsBtn").setAttribute("aria-pressed", String(setup));
+  el("workspace").hidden = pay || setup;
+  el("saveBar").hidden = pay || setup;
   el("payView").hidden = !pay;
+  el("settingsView").hidden = !setup;
   document.body.classList.toggle("is-pay", pay);
   if (pay) openPayView();
+  if (setup) openSettingsView();
+}
+
+// Remembers where you were, so leaving the settings puts you back rather than somewhere arbitrary
+function openSettings() {
+  if (el("settingsView").hidden) viewBeforeSettings = el("payView").hidden ? "shifts" : "pay";
+  showView("settings");
+}
+
+// The calendar picker needs nothing but Calendar. The name and rates live in the pay sheet, so they
+// wait for Drive the same way the Pay view does.
+function openSettingsView() {
+  const connected = hasDrive();
+  el("settingsConnect").hidden = connected;
+  el("settingsForm").hidden = !connected;
+  if (!connected) return;
+  (settings ? Promise.resolve(settings) : loadSettings())
+    .then(fillSettingsForm)
+    .catch((err) => showApiError(L.errOpenSheet, err));
+}
+
+// The board says which calendar it's writing to without the picker taking up room on every visit
+function updateSavingTo() {
+  const btn = el("savingToBtn");
+  const cal = calendars.find((c) => c.id === selectedCalendarId);
+  btn.textContent = cal ? L.savingTo(cal.summary + (cal.primary ? L.mainCalendar : "")) : L.chooseCalendar;
 }
 
 function openPayView() {
@@ -1567,8 +1613,6 @@ function fillSettingsForm(s) {
   const error = form.querySelector(".form-error");
   error.textContent = problem;
   error.hidden = !problem;
-  const r = ratesFrom(s);
-  el("settingsBox").open = !(s.full_name && r.warehouse && r.event) || !!problem; // stays open until the basics are right
 }
 
 function submitSettings(e) {
@@ -1591,8 +1635,7 @@ function submitSettings(e) {
   saveSettings(values)
     .then(() => {
       showToast(L.savedToSheet);
-      el("settingsBox").open = false;
-      renderPayMonth();
+      showView(viewBeforeSettings); // back where they came from, with the new details in hand
     })
     .catch((err) => showApiError(L.errSaveDetails, err))
     .finally(() => (btn.disabled = false));
@@ -1628,6 +1671,9 @@ function renderPayMonth() {
       payData = { lines, totals, rates, sent };
       el("writeSheetBtn").disabled = false;
       renderPayStatus(lines, totals, rates);
+      // Zeros everywhere mean nothing until the rates are in, so ask for those instead
+      const set = ratesFrom(settings);
+      el("paySetup").hidden = !!(settings.full_name && set.warehouse && set.event);
       renderPayTotals(lines.length ? totals : null);
       renderPayLines(lines);
       renderSendState();
@@ -1836,8 +1882,7 @@ function openSendPanel() {
     facts,
     makeButton(L.changeDetails, "btn-text", () => {
       panel.close();
-      el("settingsBox").open = true;
-      el("settingsBox").scrollIntoView();
+      openSettings();
     })
   );
   const pdfLine = textEl("p", "send-pdf", L.preparingPdf);
@@ -2347,6 +2392,9 @@ function checkUnsentLastMonth(items) {
       if (sent && !sent.open) return;
       btn.textContent = L.unsentReminder(monthLabel(last));
       btn.hidden = false;
+      // One red banner at a time, and this is the one that costs money. The missing times may not even
+      // be in the month that's owed, and following this nudge lands on the Pay view, which says so itself.
+      el("needsTimesBtn").hidden = true;
     })
     .catch(() => {}); // only a reminder: the Pay tab reports problems properly
 }

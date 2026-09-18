@@ -12,7 +12,8 @@
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       const parent = walker.currentNode.parentElement;
-      if (!parent || parent.closest("#calendarSelect, #accountEmail, #langBtn, .brand") || !parent.getClientRects().length) continue;
+      // A calendar's own name is whatever the person called it - often an address, often English
+      if (!parent || parent.closest("#calendarSelect, #savingToBtn, #accountEmail, #langBtn, .brand") || !parent.getClientRects().length) continue;
       (walker.currentNode.textContent.match(/[A-Za-z]+/g) || []).forEach((w) => /^(Google|ShiftBoard|Drive|Sheets)$/.test(w) || words.push(w));
     }
     return words;

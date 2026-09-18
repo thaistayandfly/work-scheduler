@@ -108,6 +108,8 @@
     status());
 
   // A sent month keeps its rates, and notices calendar changes
+  $("settingsBtn").click();
+  await wait(100);
   const f = $("settingsForm");
   f.elements.rate_event.value = "650";
   f.requestSubmit();

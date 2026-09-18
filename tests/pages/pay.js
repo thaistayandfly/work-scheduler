@@ -34,10 +34,15 @@
     !!other && other.querySelector(".pay-detail").textContent === "2 h 00 min · Move speakers" && other.querySelector(".pay-amount").textContent === "₪300.00",
     other ? other.textContent : "no Other row");
 
+  $("settingsBtn").click();
+  await wait(100);
   const form = $("settingsForm");
+  check("The details are a screen of their own, with the month put away",
+    !$("settingsView").hidden && $("payView").hidden && $("workspace").hidden,
+    "settings=" + !$("settingsView").hidden + " pay=" + !$("payView").hidden + " board=" + !$("workspace").hidden);
   check("Details and rates come from the pay sheet",
-    form.elements.full_name.value === "אלכס מורגן" && form.elements.rate_event.value === "600" && !$("settingsBox").open,
-    form.elements.full_name.value + " / " + form.elements.rate_event.value + " / open=" + $("settingsBox").open);
+    form.elements.full_name.value === "אלכס מורגן" && form.elements.rate_event.value === "600",
+    form.elements.full_name.value + " / " + form.elements.rate_event.value);
   form.elements.full_name.value = "";
   form.requestSubmit();
   await wait(50);
@@ -53,6 +58,7 @@
   form.elements.rate_warehouse.value = "60";
   form.requestSubmit();
   await wait(400);
+  check("Saving puts you back on the month you came from", !$("payView").hidden && $("settingsView").hidden, "pay=" + !$("payView").hidden);
   const put = window.__requests.filter((r) => r.method === "PUT" && r.url.includes("/values/Settings")).pop();
   const rows = put ? JSON.parse(put.body).values : [];
   const row = (key) => rows.find((r) => r[2] === key) || [];

@@ -29,6 +29,7 @@
       <span id="accountEmail" class="account-email"></span>
       <button id="signOutBtn" class="btn-text" type="button" data-l="signOut">Sign out</button>
     </div>
+    <button id="settingsBtn" class="icon-btn" type="button" aria-pressed="false" data-l-aria="settingsTitle" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.63-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
     <button id="langBtn" class="btn-text lang-btn" type="button" lang="he">עברית</button>
   </div>
 </header>
@@ -76,18 +77,10 @@
   </section>
 
   <div id="workspace" class="workspace" hidden>
-    <div class="controls">
-      <label class="field-label" for="calendarSelect" data-l="saveShiftsTo">Save shifts to</label>
-      <div class="calendar-row">
-        <div class="select-wrap"><select id="calendarSelect"></select></div>
-        <button id="newCalendarBtn" class="btn-quiet" type="button" data-l="newCalendar">New calendar</button>
-      </div>
-    </div>
+    <button id="savingToBtn" class="saving-to" type="button" hidden></button>
 
     <button id="needsTimesBtn" class="needs-times-banner" type="button" hidden></button>
     <button id="sendReminderBtn" class="needs-times-banner send-reminder" type="button" hidden></button>
-
-    <p id="calendarEmpty" class="notice" data-l-html="calendarEmpty" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
 
     <p id="boardHint" class="board-hint" data-l="boardHint">Tap a date to add times, nights, expenses or Other jobs.</p>
     <button id="earlierBtn" class="btn-text earlier" type="button" data-l="earlier">Show the week before</button>
@@ -109,43 +102,64 @@
         <button id="nextMonth" class="month-step next" type="button" aria-label="Next month" data-l-aria="nextMonth"></button>
       </div>
       <p id="payStatus" class="pay-status" aria-live="polite"></p>
+      <p id="paySetup" class="notice pay-setup" hidden><span data-l="paySetupText">Add your name and rates to see what you're owed.</span> <button id="paySetupBtn" class="btn-quiet" type="button" data-l="settingsTitle">Your details and rates</button></p>
       <div id="payTotals" class="pay-totals"></div>
       <div class="month-actions">
         <p id="sendStatus" class="send-status" aria-live="polite" hidden></p>
         <button id="useRatesBtn" class="btn-text use-rates" type="button" data-l="useCurrentRates" hidden>Use my current rates</button>
-        <div class="sheet-actions">
-          <button id="sendBtn" class="btn-primary" type="button" data-l="reviewSend" disabled>Review and send</button>
-          <button id="writeSheetBtn" class="btn-quiet" type="button" data-l="updateSheet">Update my sheet</button>
-          <button id="reopenBtn" class="btn-quiet" type="button" data-l="reopen" hidden>Reopen to correct</button>
-          <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" data-l="openSheet" hidden>Open in Google Sheets</a>
-          <a id="sentPdfLink" class="btn-text" target="_blank" rel="noopener" data-l="openSentPdf" hidden>Open the sent PDF</a>
-        </div>
+        <!-- One action at a time: "Review and send" until it's sent, "Reopen to correct" after. -->
+        <button id="sendBtn" class="btn-primary" type="button" data-l="reviewSend" disabled>Review and send</button>
+        <button id="reopenBtn" class="btn-primary" type="button" data-l="reopen" hidden>Reopen to correct</button>
+        <details id="payMore" class="more-actions">
+          <summary data-l="more">More</summary>
+          <div class="more-list">
+            <button id="writeSheetBtn" class="btn-quiet" type="button" data-l="updateSheet">Update my sheet</button>
+            <a id="openSheetLink" class="btn-text" target="_blank" rel="noopener" data-l="openSheet" hidden>Open in Google Sheets</a>
+            <a id="sentPdfLink" class="btn-text" target="_blank" rel="noopener" data-l="openSentPdf" hidden>Open the sent PDF</a>
+          </div>
+        </details>
       </div>
       <ol id="payLines" class="pay-lines"></ol>
-
-      <details id="settingsBox" class="settings">
-        <summary data-l="settingsTitle">Your details and rates</summary>
-        <form id="settingsForm" class="settings-form" novalidate>
-          <label class="field"><span id="fullNameLabel" data-l="fullName">Full name, as the company knows you</span><input name="full_name" type="text" autocomplete="name" dir="auto"></label>
-          <label class="field"><span data-l="companyEmail">Company email</span><input name="company_email" type="email" autocomplete="off" inputmode="email" dir="ltr"></label>
-          <label class="field"><span data-l="reportLanguage">Report language</span>
-            <span class="select-wrap"><select name="report_language">
-              <option value="he" lang="he">עברית</option>
-              <option value="en" lang="en">English</option>
-            </select></span>
-          </label>
-          <div class="rates">
-            <label class="field"><span data-l="rateWarehouse">Warehouse, per hour (₪)</span><input name="rate_warehouse" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field"><span data-l="rateEvent">Event, per day (₪)</span><input name="rate_event" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field"><span data-l="rateExtra">Event extra hour (₪)</span><input name="rate_extra" type="number" min="0" step="0.01" inputmode="decimal"></label>
-            <label class="field"><span data-l="rateNight">Night at work (₪)</span><input name="rate_night" type="number" min="0" step="0.01" inputmode="decimal"></label>
-          </div>
-          <p class="fine" data-l="settingsFine">Saved in your own pay sheet. A new rate counts for every month you haven't sent yet.</p>
-          <p class="form-error" role="alert" hidden></p>
-          <button type="submit" class="btn-primary" data-l="saveDetails">Save details</button>
-        </form>
-      </details>
     </div>
+  </section>
+
+  <!-- Set up once: which calendar, who you are, what you're paid. One Save. -->
+  <section id="settingsView" class="settings-view" hidden>
+    <h2 class="view-title" data-l="settingsTitle">Your details and rates</h2>
+
+    <div class="controls">
+      <label class="field-label" for="calendarSelect" data-l="saveShiftsTo">Save shifts to</label>
+      <div class="calendar-row">
+        <div class="select-wrap"><select id="calendarSelect"></select></div>
+        <button id="newCalendarBtn" class="btn-quiet" type="button" data-l="newCalendar">New calendar</button>
+      </div>
+      <p id="calendarEmpty" class="notice" data-l-html="calendarEmpty" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
+    </div>
+
+    <div id="settingsConnect" class="connect" hidden>
+      <p data-l="settingsNeedsDrive">Your name and rates are kept in your own pay sheet. Connect Google Drive to set them up.</p>
+      <button id="settingsConnectBtn" class="btn-primary" type="button" data-l="connectDrive">Connect Google Drive</button>
+    </div>
+
+    <form id="settingsForm" class="settings-form" novalidate>
+      <label class="field"><span id="fullNameLabel" data-l="fullName">Full name, as the company knows you</span><input name="full_name" type="text" autocomplete="name" dir="auto"></label>
+      <label class="field"><span data-l="companyEmail">Company email</span><input name="company_email" type="email" autocomplete="off" inputmode="email" dir="ltr"></label>
+      <label class="field"><span data-l="reportLanguage">Report language</span>
+        <span class="select-wrap"><select name="report_language">
+          <option value="he" lang="he">עברית</option>
+          <option value="en" lang="en">English</option>
+        </select></span>
+      </label>
+      <div class="rates">
+        <label class="field"><span data-l="rateWarehouse">Warehouse, per hour (₪)</span><input name="rate_warehouse" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        <label class="field"><span data-l="rateEvent">Event, per day (₪)</span><input name="rate_event" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        <label class="field"><span data-l="rateExtra">Event extra hour (₪)</span><input name="rate_extra" type="number" min="0" step="0.01" inputmode="decimal"></label>
+        <label class="field"><span data-l="rateNight">Night at work (₪)</span><input name="rate_night" type="number" min="0" step="0.01" inputmode="decimal"></label>
+      </div>
+      <p class="fine" data-l="settingsFine">Saved in your own pay sheet. A new rate counts for every month you haven't sent yet.</p>
+      <p class="form-error" role="alert" hidden></p>
+      <button type="submit" class="btn-primary" data-l="saveDetails">Save details</button>
+    </form>
   </section>
 
   <noscript><p class="notice">ShiftBoard needs JavaScript turned on to talk to Google Calendar.</p></noscript>

@@ -221,11 +221,7 @@ function stub(scenario, lang) {
       if (scenario === "pay-settings") {
         document.getElementById("tabPay").click();
         after = 800;
-        setTimeout(function () {
-          var box = document.getElementById("settingsBox");
-          box.open = true;
-          box.scrollIntoView();
-        }, 500);
+        setTimeout(function () { document.getElementById("settingsBtn").click(); }, 500);
       }
       // Checks and screenshots wait for this instead of guessing how long the page needed
       setTimeout(function () { window.__ready = true; }, after);

@@ -25,7 +25,7 @@
     norm(line.textContent));
   check("The previous-month arrow sits on the right", $("prevMonth").getBoundingClientRect().left > $("nextMonth").getBoundingClientRect().left, "");
   check("Actions and settings are in Hebrew",
-    $("writeSheetBtn").textContent === "עדכון הגיליון שלי" && document.querySelector("#settingsBox summary").textContent === "הפרטים והתעריפים שלכם" &&
+    $("writeSheetBtn").textContent === "עדכון הגיליון שלי" && document.querySelector("#settingsView .view-title").textContent === "הפרטים והתעריפים שלכם" &&
       $("settingsForm").querySelector('[data-l="reportLanguage"]').textContent === "שפת הדוח",
     $("writeSheetBtn").textContent);
   const email = $("settingsForm").elements.company_email;

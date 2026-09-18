@@ -172,9 +172,11 @@ function boot() {
   ["signInBtn", "signOutBtn", "account", "accountEmail", "welcome", "workspace", "calendarSelect", "newCalendarBtn",
     "calendarEmpty", "earlierBtn", "board", "moreWeeksBtn", "saveBar", "statusText", "saveBtn", "toast", "needsTimesBtn", "dayPanel", "boardHint", "viewTabs", "tabShifts", "tabPay", "payView", "driveConnect",
     "connectDriveBtn", "payContent", "prevMonth", "nextMonth", "settingsForm", "writeSheetBtn", "openSheetLink", "langBtn", "sendBtn", "reopenBtn", "useRatesBtn", "sendReminderBtn",
-    "sendStatus", "sentPdfLink"].forEach((id) => (dom[id] = new FakeEl("div")));
+    "sendStatus", "sentPdfLink", "settingsView", "settingsBtn", "savingToBtn", "paySetup", "paySetupBtn", "settingsConnect", "settingsConnectBtn", "payMore"]
+    .forEach((id) => (dom[id] = new FakeEl("div")));
   dom.root = new FakeEl("html");
-  ["account", "workspace", "saveBar", "calendarEmpty", "toast", "needsTimesBtn", "viewTabs", "payView", "driveConnect", "payContent"]
+  ["account", "workspace", "saveBar", "calendarEmpty", "toast", "needsTimesBtn", "viewTabs", "payView", "driveConnect", "payContent",
+    "settingsView", "settingsBtn", "savingToBtn", "paySetup", "settingsConnect"]
     .forEach((id) => (dom[id].hidden = true)); // as in index.html
   const winListeners = {};
   const ctx = vm.createContext({
