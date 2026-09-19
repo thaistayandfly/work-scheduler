@@ -1429,7 +1429,7 @@ const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 // Settings tab: A = label (in the report's language), B = value, C = key (a hidden column). Values are found by
 // key, so rows moved by hand still work. "" is an empty row.
-const SETTINGS_ROWS = ["title", "", "full_name", "company_email", "bcc_email", "report_language", "", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+const SETTINGS_ROWS = ["title", "", "full_name", "company_email", "bcc_email", "report_language", "", "rate_warehouse", "rate_event", "rate_extra", "rate_night", "warehouse_hours"];
 
 let sheetId = localStorage.getItem("sb_sheetId");
 let settings = null; // { full_name, company_email, rate_* } as last read from or saved to the sheet
@@ -1944,7 +1944,7 @@ function updateSheet() {
 
 // ---------- Pay view ----------
 
-const SETTING_KEYS = ["full_name", "company_email", "bcc_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+const SETTING_KEYS = ["full_name", "company_email", "bcc_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night", "warehouse_hours"];
 let payMonth = null; // the 1st of the month shown on the Pay view
 let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
 let viewBeforeSettings = "shifts"; // where the settings were opened from
@@ -2162,9 +2162,11 @@ function renderPayStatus(lines, rates) {
   else status.textContent = L.allTimed;
 }
 
-// What an hourly shift is guessed at when its hours aren't known yet. Only ever said out loud beside the
-// total, never added to it: the total is what the pay sheet and the company are given, and that stays fact.
+// How long a Warehouse day is taken to be when its hours aren't known yet. Only ever said out loud beside
+// the total, never added to it: the total is what the pay sheet and the company are given, and that stays
+// fact. Eight unless someone sets their own under the gear.
 const GUESSED_HOURS = 8;
+const guessedHours = () => Number(String((settings && settings.warehouse_hours) || "").replace(/[^\d.]/g, "")) || GUESSED_HOURS;
 
 function renderPayTotals(totals, lines, rates) {
   const box = el("payTotals");
@@ -2179,7 +2181,8 @@ function renderPayTotals(totals, lines, rates) {
   // worth nothing until its hours are in — past or future alike — so the month is guessed with those at
   // eight hours, and the answer given as a finished figure rather than a sum to add up in your head.
   const hourly = (lines || []).filter((line) => line.type === "Warehouse" && line.missingTimes);
-  const guess = round2(hourly.length * GUESSED_HOURS * ((rates && rates.warehouse) || 0));
+  const hours = guessedHours();
+  const guess = round2(hourly.length * hours * ((rates && rates.warehouse) || 0));
   const counted = ahead.filter((line) => line.salary > 0).length;
   const aside = [];
   if (!ahead.length) {
@@ -2192,7 +2195,7 @@ function renderPayTotals(totals, lines, rates) {
     // The money belongs to some of them, not all, and saying "for 2 shifts" reads as though it covered both
     aside.push(L.someToCome(money(aheadPay), counted, ahead.length));
   }
-  if (guess > 0) aside.push(L.monthGuess(money(round2(totals.salary + guess)), hourly.length, GUESSED_HOURS));
+  if (guess > 0) aside.push(L.monthGuess(money(round2(totals.salary + guess)), hourly.length, hours));
   const { warehouse, event, nights, other } = totals;
   const rows = [
     [L.types.Warehouse, warehouse.count, L.countShifts(warehouse.count) + " · " + formatHours(warehouse.hours) + " · " + money(warehouse.pay)],

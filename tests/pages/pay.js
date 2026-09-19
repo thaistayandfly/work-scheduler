@@ -131,6 +131,7 @@
 
   form.elements.full_name.value = "אלכס מורגן";
   form.elements.rate_warehouse.value = "60";
+  form.elements.warehouse_hours.value = "6"; // these warehouse days are shorter than the usual eight
   form.requestSubmit();
   await wait(400);
   check("Saving puts you back on the month you came from", !$("payView").hidden && $("settingsView").hidden, "pay=" + !$("payView").hidden);
@@ -167,6 +168,10 @@
   const row = (key) => rows.find((r) => r[2] === key) || [];
   check("Saving writes the details to the Settings tab", row("rate_warehouse")[1] === "60" && row("full_name")[1] === "אלכס מורגן" && row("rate_night")[1] === "200", put ? put.body : "no PUT sent");
   check("A new rate recalculates the month (8.5 h × ₪60)", total() === "₪4,710.00", total());
+  check("A typical Warehouse day is saved with the rates", row("warehouse_hours")[1] === "6", JSON.stringify(row("warehouse_hours")));
+  const guessNow = $("payTotals").querySelector(".to-come").textContent;
+  check("And the guess uses it instead of eight",
+    /if the 3 missing Warehouse days are 6 hours each\.$/.test(guessNow), guessNow);
 
   $("payLines").querySelector(".pay-line").click();
   await wait(100);

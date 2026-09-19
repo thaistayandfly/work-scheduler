@@ -19,10 +19,11 @@ const CHECKS = [
   ["Installing it, and working with no signal", "checks/offline.js"],
 ];
 
-// [name, page script, preview page]
+// [name, page script, preview page, width in CSS pixels if not a normal phone]
 const IN_PAGE = [
   ["A day's panel: times, nights, expenses, Other jobs", "phase1.js", "en-loaded.html"],
   ["The app's own date and time boxes", "pick-fields.js", "en-panel.html"],
+  ["Nothing colliding on a small phone", "narrow.js", "en-loaded.html", 320],
   ["The offline notice, clear of the tabs", "offline-notice.js", "en-loaded.html"],
   ["Shifts kept for when there's no signal", "offline-cache.js", "en-loaded.html"],
   ["Opening the app with no signal at all", "offline-start.js", "en-offline-start.html"],
@@ -140,8 +141,8 @@ for (const [name, file] of CHECKS) {
 
   const chrome = await launch();
   try {
-    for (const [name, script, page] of IN_PAGE) {
-      const tab = await chrome.open(fileUrl(path.join(OUT, page)));
+    for (const [name, script, page, width] of IN_PAGE) {
+      const tab = await chrome.open(fileUrl(path.join(OUT, page)), width ? { width, height: 700 } : {});
       let lines;
       try {
         // The preview taps its own way into the state being checked, then says it's there

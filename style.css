@@ -244,6 +244,24 @@ button {
   min-width: 0;
 }
 
+/* The address is the only thing up here that isn't a control, so it's what gives way. Without this the
+   account block is squeezed narrower than its contents, they spill out of it, and the gear ends up
+   painted across "Sign out" on a small phone. */
+.account > .btn-text {
+  flex-shrink: 0;
+}
+
+@media (max-width: 380px) {
+  .account-email {
+    display: none;
+  }
+
+  /* The name can afford to be smaller; the controls beside it can't */
+  .brand {
+    font-size: 1.25rem;
+  }
+}
+
 .lang-btn {
   flex-shrink: 0;
 }
