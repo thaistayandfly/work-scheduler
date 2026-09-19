@@ -1123,6 +1123,96 @@ function formatHours(hours) {
   return L.hours(Math.floor(minutes / 60), String(minutes % 60).padStart(2, "0"));
 }
 
+// ---------- Date and time fields the app draws itself ----------
+
+// The phone draws its own date and time boxes in its own language and ignores this app's settings, proven
+// both by overriding the page's locale and by setting lang on the input. So the box a person reads and
+// types into is ours, in the format they chose, and the phone's picker sits behind the button beside it
+// for anyone who would rather tap than type. The value the rest of the form reads — an ISO date, a
+// 24-hour time — lives in a hidden input under the same name as before.
+const datePattern = () => (datePref() === "mdy" ? "mm/dd/yyyy" : "dd/mm/yyyy");
+const timePattern = () => (clockPref() === "12" ? "h:mm am" : "HH:MM");
+
+function parseShownDate(text) {
+  let bits = String(text).match(/\d+/g);
+  if (bits && bits.length === 1 && bits[0].length === 8) bits = [bits[0].slice(0, 2), bits[0].slice(2, 4), bits[0].slice(4)];
+  if (!bits || bits.length < 3) return "";
+  let [first, second, year] = bits.map(Number);
+  if (datePref() === "mdy") [first, second] = [second, first];
+  if (year < 100) year += 2000;
+  const d = new Date(year, second - 1, first);
+  // Rejects the 31st of February and its friends, which roll over into the next month
+  if (isNaN(d) || d.getDate() !== first || d.getMonth() !== second - 1) return "";
+  return dateStr(d);
+}
+
+// "1830", "18:30", "6.30 pm" all read the same way. A bare number is taken as a 24-hour time, so an
+// evening shift can always be typed as 18:30 whatever the phone shows, and it's redrawn to prove it.
+function parseShownTime(text) {
+  const said = String(text).trim().toLowerCase().replace(/\s+/g, " ");
+  const m = said.match(/^(\d{1,2})[:. ]?(\d{2})?\s*(a|p|am|pm)?$/);
+  if (!m) return "";
+  let hours = Number(m[1]);
+  const mins = Number(m[2] || 0);
+  if (m[3]) {
+    if (hours > 12) return "";
+    if (hours === 12) hours = 0;
+    if (m[3][0] === "p") hours += 12;
+  }
+  return hours > 23 || mins > 59 ? "" : pad2(hours) + ":" + pad2(mins);
+}
+
+const PICK_ICONS = {
+  date: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M7 2v2H5.5A2.5 2.5 0 0 0 3 6.5v13A2.5 2.5 0 0 0 5.5 22h13a2.5 2.5 0 0 0 2.5-2.5v-13A2.5 2.5 0 0 0 18.5 4H17V2h-2v2H9V2H7zm12 8v9.5a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5V10h14z"/></svg>',
+  time: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm1-13h-2v6l5 3 1-1.7-4-2.3V7z"/></svg>',
+};
+
+function pickerField(kind, name, label, pickLabel) {
+  const wrap = document.createElement("div");
+  wrap.className = "pickable";
+  const shown = document.createElement("input");
+  shown.type = "text";
+  shown.className = "shown";
+  shown.inputMode = "numeric";
+  shown.autocomplete = "off";
+  shown.setAttribute("aria-label", label);
+  const pick = document.createElement("span");
+  pick.className = "pick";
+  pick.innerHTML = PICK_ICONS[kind];
+  // The phone's own control, invisible on top of the button: tapping it opens the picker with no
+  // showPicker() call to be refused, and keyboard users still reach a real, labelled control
+  const native = document.createElement("input");
+  native.type = kind;
+  native.className = "native";
+  native.setAttribute("aria-label", pickLabel);
+  pick.appendChild(native);
+  const value = document.createElement("input");
+  value.type = "hidden";
+  value.name = name;
+  wrap.append(shown, pick, value);
+
+  wrap.repaint = () => {
+    const v = value.value;
+    native.value = v;
+    shown.placeholder = kind === "date" ? datePattern() : timePattern();
+    if (document.activeElement === shown) return; // never rewrite what someone is in the middle of typing
+    shown.value = !v ? "" : kind === "date" ? shownDate(new Date(v + "T00:00")) : clock(new Date("2000-01-01T" + v));
+  };
+  const set = (v) => {
+    if (value.value === v) return wrap.repaint();
+    value.value = v;
+    wrap.repaint();
+    value.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  native.addEventListener("change", () => set(native.value));
+  shown.addEventListener("change", () => {
+    const read = kind === "date" ? parseShownDate(shown.value) : parseShownTime(shown.value);
+    if (read) set(read);
+    else wrap.repaint(); // unreadable: put back whatever was there rather than lose it
+  });
+  return wrap;
+}
+
 function shiftForm(ds, type, event) {
   const timed = !!event && isTimed(event);
   const start = timed ? new Date(event.start.dateTime) : null;
@@ -1134,13 +1224,8 @@ function shiftForm(ds, type, event) {
   form.noValidate = true; // our own messages instead of the browser's bubbles
   form.innerHTML =
     "<h3>" + L.types[type] + "</h3>" +
-    '<div class="when"><span class="when-label">' + L.start + '</span><input name="startDate" type="date" aria-label="' + L.startDate +
-    '"><input name="startTime" type="time" aria-label="' + L.startTime + '"></div>' +
-    '<div class="when"><span class="when-label">' + L.end + '</span><input name="endDate" type="date" aria-label="' + L.endDate +
-    '"><input name="endTime" type="time" aria-label="' + L.endTime + '"></div>' +
-    // The two boxes above are the phone's own, drawn in the phone's language whatever this app is set
-    // to, so the shift is said back here in the format the person actually chose
-    '<p class="when-reads"></p>' +
+    '<div class="when" data-row="start"><span class="when-label">' + L.start + "</span></div>" +
+    '<div class="when" data-row="end"><span class="when-label">' + L.end + "</span></div>" +
     '<p class="duration" aria-live="polite"></p>' +
     (type === OTHER
       ? '<label class="field">' + L.amountPaid + '<input name="amount" type="number" min="0" step="0.01" inputmode="decimal"></label>' +
@@ -1151,10 +1236,20 @@ function shiftForm(ds, type, event) {
     '<p class="form-error" role="alert" hidden></p>' +
     '<div class="form-actions"><button type="submit" class="btn-primary">' + L.saveType(type) + "</button></div>";
 
+  const fields = [];
+  const addField = (row, kind, name, label, pickLabel) => {
+    const field = pickerField(kind, name, label, pickLabel);
+    form.querySelector('[data-row="' + row + '"]').appendChild(field);
+    fields.push(field);
+  };
+  addField("start", "date", "startDate", L.startDate, L.pickDate);
+  addField("start", "time", "startTime", L.startTime, L.pickTime);
+  addField("end", "date", "endDate", L.endDate, L.pickDate);
+  addField("end", "time", "endTime", L.endTime, L.pickTime);
+
   const f = form.elements;
   f.startDate.value = start ? dateStr(start) : ds;
-  // A time input only accepts 24-hour "HH:MM" as its value — the phone draws it in its own format.
-  // Anything else, such as this app's AM/PM display, is rejected and leaves the field blank.
+  // These hold the machine's own shapes — an ISO date, a 24-hour time — whatever the boxes above show
   f.startTime.value = start ? clock24(start) : "";
   f.endDate.value = end ? dateStr(end) : ds;
   f.endTime.value = end ? clock24(end) : "";
@@ -1177,11 +1272,7 @@ function shiftForm(ds, type, event) {
     form.querySelector(".duration").textContent =
       hours > 0 ? formatHours(hours) + (type === "Event" && hours > 12 ? L.ofWhichExtra(formatHours(hours - 12)) : "") : "";
     // Says the same shift back in this phone's chosen date and time format, since the boxes can't
-    const sameDay = f.startDate.value === f.endDate.value;
-    form.querySelector(".when-reads").textContent =
-      isNaN(from) || isNaN(to) || hours <= 0
-        ? ""
-        : shownDate(from) + ", " + clock(from) + " – " + (sameDay ? "" : shownDate(to) + ", ") + clock(to);
+    fields.forEach((field) => field.repaint()); // the boxes follow whatever the hidden values now say
   };
   // An end time earlier than the start means the shift finished the next day (night shifts)
   const rollEnd = () => {

@@ -1124,14 +1124,50 @@ html:has(dialog[open]) {
 }
 
 /* The shift said back in the format this phone chose, under boxes the phone draws its own way */
-.when-reads {
-  color: var(--ink-2);
-  font-size: 0.9375rem;
+/* Our own box, in the format this phone chose, with the phone's picker behind the button beside it */
+.pickable {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pickable .shown {
+  padding-inline-end: 46px; /* room for the button sitting inside the field's end */
   font-variant-numeric: tabular-nums;
 }
 
-.when-reads:empty {
-  display: none;
+.pickable .pick {
+  position: absolute;
+  inset-inline-end: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 46px;
+  border-radius: var(--radius-field);
+  color: var(--ink-2);
+}
+
+/* The phone's own control, invisible on top of the button: tapping the button opens the real picker */
+.pickable .native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pickable .native:focus-visible + *,
+.pickable .native:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  border-radius: var(--radius-field);
 }
 
 /* The changes waiting to be saved, one line each, before any of them reaches the calendar */

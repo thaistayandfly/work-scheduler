@@ -38,10 +38,6 @@
   next.setDate(next.getDate() + 1);
   const duration = form.querySelector(".duration").textContent;
   check("An end time before the start rolls to the next day", form.elements.endDate.value === ymd(next) && duration === "22 h 00 min, of which 10 h 00 min extra", form.elements.endDate.value + " / " + duration);
-  // The date and time boxes are the phone's own; this line says the shift back the way the app was told to
-  const reads = form.querySelector(".when-reads").textContent;
-  check("The shift is said back in the format this phone chose",
-    /^\d{2}\/\d{2}\/\d{4}, 6:00 AM – \d{2}\/\d{2}\/\d{4}, 4:00 AM$/.test(reads), reads || "(nothing said back)");
   form.elements.slept.checked = true;
   buttonNamed(form, "Add an expense").click();
   const expense = form.querySelector(".expense");
