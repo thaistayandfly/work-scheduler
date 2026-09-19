@@ -1102,6 +1102,9 @@ function shiftForm(ds, type, event) {
     '"><input name="startTime" type="time" aria-label="' + L.startTime + '"></div>' +
     '<div class="when"><span class="when-label">' + L.end + '</span><input name="endDate" type="date" aria-label="' + L.endDate +
     '"><input name="endTime" type="time" aria-label="' + L.endTime + '"></div>' +
+    // The two boxes above are the phone's own, drawn in the phone's language whatever this app is set
+    // to, so the shift is said back here in the format the person actually chose
+    '<p class="when-reads"></p>' +
     '<p class="duration" aria-live="polite"></p>' +
     (type === OTHER
       ? '<label class="field">' + L.amountPaid + '<input name="amount" type="number" min="0" step="0.01" inputmode="decimal"></label>' +
@@ -1132,9 +1135,17 @@ function shiftForm(ds, type, event) {
   );
 
   const showDuration = () => {
-    const hours = (new Date(f.endDate.value + "T" + f.endTime.value) - new Date(f.startDate.value + "T" + f.startTime.value)) / 3600000;
+    const from = new Date(f.startDate.value + "T" + f.startTime.value);
+    const to = new Date(f.endDate.value + "T" + f.endTime.value);
+    const hours = (to - from) / 3600000;
     form.querySelector(".duration").textContent =
       hours > 0 ? formatHours(hours) + (type === "Event" && hours > 12 ? L.ofWhichExtra(formatHours(hours - 12)) : "") : "";
+    // Says the same shift back in this phone's chosen date and time format, since the boxes can't
+    const sameDay = f.startDate.value === f.endDate.value;
+    form.querySelector(".when-reads").textContent =
+      isNaN(from) || isNaN(to) || hours <= 0
+        ? ""
+        : shownDate(from) + ", " + clock(from) + " – " + (sameDay ? "" : shownDate(to) + ", ") + clock(to);
   };
   // An end time earlier than the start means the shift finished the next day (night shifts)
   const rollEnd = () => {

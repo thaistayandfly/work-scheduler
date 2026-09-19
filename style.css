@@ -1123,6 +1123,17 @@ html:has(dialog[open]) {
   justify-self: start;
 }
 
+/* The shift said back in the format this phone chose, under boxes the phone draws its own way */
+.when-reads {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.when-reads:empty {
+  display: none;
+}
+
 /* The changes waiting to be saved, one line each, before any of them reaches the calendar */
 .draft-list {
   display: grid;
