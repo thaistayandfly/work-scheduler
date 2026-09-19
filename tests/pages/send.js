@@ -29,6 +29,7 @@
     };
     return {
       to: header("To"),
+      bcc: header("Bcc"),
       subject: header("Subject"),
       text: utf8(part("text/plain")),
       html: utf8(part("text/html")),
@@ -36,9 +37,10 @@
       disposition: (mime.match(/Content-Disposition: [^\r\n]*/) || [""])[0],
     };
   };
+  // Passing no start leans on the form pre-filling the time already saved, which is the point
   const timeShift = async (start, end) => {
     $("payLines").querySelector(".pay-line").click();
-    await wait(100);
+    await wait(200);
     const form = panel.querySelector("form");
     if (start) form.elements.startTime.value = start;
     form.elements.endTime.value = end;
@@ -65,7 +67,7 @@
   const facts = [...panel.querySelectorAll(".send-facts div")].map((d) => d.textContent).join(" | ");
   check("The review shows the recipient, the name, the report language and the totals",
     panel.open && $("dayPanelTitle").textContent === "Send August 2026" &&
-      facts === "Toshifts@example.co.il | Name on the reportאלכס מורגן | Report languageעברית | Shifts1 shift | Total to pay (gross salary)₪670.00 | Expenses reimbursement₪0.00",
+      facts === "Toshifts@example.co.il | Copy toalex.morgan.shifts@example.com | Name on the reportאלכס מורגן | Report languageעברית | Shifts1 shift | Total to pay (gross salary)₪670.00 | Expenses reimbursement₪0.00",
     facts);
   const augTab = window.__tabs.find((t) => t.properties.title === "2026-08");
   const pdfLink = panel.querySelector("a[href^='blob:']");
@@ -86,6 +88,7 @@
   check("Google is asked for the send-mail permission, only now", window.__grants.length === 1 && window.__grants[0].indexOf("gmail.send") > -1, JSON.stringify(window.__grants));
   const mail = window.__mail[0] ? readMail(window.__mail[0]) : {};
   check("One email, to the company address", window.__mail.length === 1 && mail.to === "shifts@example.co.il", mail.to);
+  check("A blind copy goes to the sender's own address", mail.bcc === "alex.morgan.shifts@example.com", mail.bcc || "no Bcc header");
   check("The subject is in the report language", mail.subject === "דוח משמרות - אוגוסט 2026 - אלכס מורגן", mail.subject);
   check("The email gives both totals and runs right to left",
     mail.text.indexOf("סה״כ לתשלום (שכר ברוטו): ₪670.00") > -1 && mail.text.indexOf("החזר הוצאות: ₪0.00") > -1 && mail.html.indexOf('dir="rtl"') > -1, mail.text);
@@ -101,7 +104,10 @@
   check("August is marked sent on its tab, with the rates it was sent with",
     info.to === "shifts@example.co.il" && info.rates && info.rates.event === 600 && info.corrections === 0 && info.open === false && info.pdfId === "pdf1",
     note() ? note().metadataValue : "no note");
-  const today = new Date().toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  // This page runs in English, where dates read month-first unless someone says otherwise
+  const p2 = (n) => String(n).padStart(2, "0");
+  const rightNow = new Date();
+  const today = p2(rightNow.getMonth() + 1) + "/" + p2(rightNow.getDate()) + "/" + rightNow.getFullYear();
   check("The Pay tab shows August as sent, with its PDF and a way to reopen it",
     !panel.open && status() === "Sent to shifts@example.co.il on " + today + "." && $("sendBtn").hidden && $("writeSheetBtn").hidden &&
       !$("reopenBtn").hidden && !$("sentPdfLink").hidden && $("sentPdfLink").href.indexOf("/file/d/pdf1/") > -1 && $("toast").textContent === "Sent to shifts@example.co.il",
@@ -113,9 +119,15 @@
   const f = $("settingsForm");
   f.elements.rate_event.value = "650";
   f.requestSubmit();
+  // Saving returns to the month and reloads it; wait for that to land, or its stale render
+  // arrives after the next edit and quietly undoes it on screen
+  await until(() => !$("payView").hidden && $("payLines").querySelectorAll(".pay-line").length > 0);
   await wait(700);
   check("A new rate doesn't change a month that was sent", total() === "₪670.00", total());
   await timeShift(null, "22:00"); // now 14 hours
+  check("Reopening a timed shift keeps the times it already had, so only the end had to change",
+    (window.__requests.filter((r) => r.method === "PATCH").pop() || { body: "" }).body.indexOf("T15:00") > -1,
+    (window.__requests.filter((r) => r.method === "PATCH").pop() || { body: "no PATCH" }).body.slice(0, 120));
   check("A calendar change after sending is flagged",
     / Your calendar changed after you sent this month\. Reopen it to send a correction\.$/.test(status()) && $("sendStatus").classList.contains("is-warning"), status());
 

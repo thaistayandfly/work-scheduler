@@ -23,7 +23,7 @@
   const lines = [...$("payLines").querySelectorAll(".pay-line")];
   const text = (i, cls) => (lines[i] ? lines[i].querySelector("." + cls).textContent : "");
   check("One row per shift that starts this month, in start order",
-    lines.length === 10 && text(0, "pay-when") === "Wed, Sep 9" && text(1, "pay-when") === "Fri, Sep 11 · 06:00–04:00 (+1)",
+    lines.length === 10 && text(0, "pay-when") === "Wed, Sep 9" && text(1, "pay-when") === "Fri, Sep 11 · 6:00 AM–4:00 AM (+1)",
     lines.length + " rows; first: " + text(0, "pay-when") + " / " + text(1, "pay-when"));
   check("A row shows hours, extra hours, the night and expenses",
     text(1, "pay-detail") === "22 h 00 min · 10 h 00 min extra · night ₪200.00 · expenses ₪370.00" && text(1, "pay-amount") === "₪1,500.00",
@@ -33,6 +33,28 @@
   check("An Other job shows its description and amount",
     !!other && other.querySelector(".pay-detail").textContent === "2 h 00 min · Move speakers" && other.querySelector(".pay-amount").textContent === "₪300.00",
     other ? other.textContent : "no Other row");
+
+  // The clock is a preference of this phone, and switching it redraws what's already on screen
+  const whenAt = (i) => [...$("payLines").querySelectorAll(".pay-line")][i].querySelector(".pay-when").textContent;
+  const setClock = (v) => {
+    $("clockSelect").value = v;
+    $("clockSelect").dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const setDate = (v) => {
+    $("dateSelect").value = v;
+    $("dateSelect").dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  check("English starts off on AM/PM and month-first, as that language reads", /AM|PM/.test(whenAt(1)) && whenAt(1).indexOf("Sep 11") > -1, whenAt(1));
+  setClock("24");
+  await wait(100);
+  check("Choosing 24-hour redraws the times already on screen", whenAt(1) === "Fri, Sep 11 · 06:00–04:00 (+1)", whenAt(1));
+  setDate("dmy");
+  await wait(100);
+  check("Choosing day-first redraws the dates too", whenAt(1) === "Fri 11 Sept · 06:00–04:00 (+1)", whenAt(1));
+  setClock("12");
+  setDate("mdy");
+  await wait(100);
+  check("And back again", whenAt(1) === "Fri, Sep 11 · 6:00 AM–4:00 AM (+1)", whenAt(1));
 
   $("settingsBtn").click();
   await wait(100);

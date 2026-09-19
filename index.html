@@ -136,6 +136,24 @@
       <p id="calendarEmpty" class="notice" data-l-html="calendarEmpty" hidden>You don't have a calendar you can edit yet. Create one with <strong>New calendar</strong>.</p>
     </div>
 
+    <!-- How this phone shows dates and times. Kept on the device, like the app's language, so they need
+         no sheet. Each follows the language until someone picks one, and then the pick stands. -->
+    <div class="controls">
+      <label class="field-label" for="clockSelect" data-l="timeFormat">Show times as</label>
+      <div class="select-wrap"><select id="clockSelect">
+        <option value="24" data-l="clock24">24-hour (18:30)</option>
+        <option value="12" data-l="clock12">AM / PM (6:30 PM)</option>
+      </select></div>
+    </div>
+
+    <div class="controls">
+      <label class="field-label" for="dateSelect" data-l="dateFormat">Show dates as</label>
+      <div class="select-wrap"><select id="dateSelect">
+        <option value="dmy" data-l="dateDmy">Day first (31/12/2026)</option>
+        <option value="mdy" data-l="dateMdy">Month first (12/31/2026)</option>
+      </select></div>
+    </div>
+
     <div id="settingsConnect" class="connect" hidden>
       <p data-l="settingsNeedsDrive">Your name and rates are kept in your own pay sheet. Connect Google Drive to set them up.</p>
       <button id="settingsConnectBtn" class="btn-primary" type="button" data-l="connectDrive">Connect Google Drive</button>
@@ -144,6 +162,7 @@
     <form id="settingsForm" class="settings-form" novalidate>
       <label class="field"><span id="fullNameLabel" data-l="fullName">Full name, as the company knows you</span><input name="full_name" type="text" autocomplete="name" dir="auto"></label>
       <label class="field"><span data-l="companyEmail">Company email</span><input name="company_email" type="email" autocomplete="off" inputmode="email" dir="ltr"></label>
+      <label class="field"><span data-l="bccEmail">Send a copy to (optional)</span><input name="bcc_email" type="email" autocomplete="off" inputmode="email" dir="ltr"><span class="fine" data-l="bccHint">Your own address, to keep a copy of what you sent.</span></label>
       <label class="field"><span data-l="reportLanguage">Report language</span>
         <span class="select-wrap"><select name="report_language">
           <option value="he" lang="he">עברית</option>

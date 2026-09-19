@@ -52,7 +52,20 @@ const UI_LANG = pickLanguage();
 const L = UI_TEXT[UI_LANG];
 // Dates and money follow the app's language, never a phone set to the other one
 const LOCALE = UI_LANG === "he" ? "he-IL" : /^en\b/i.test(navigator.language || "") ? navigator.language : "en-US";
-const rangeFormat = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric" });
+
+// How this phone shows dates and times. Each starts out following the language — Hebrew reads 24-hour and
+// day-first, English reads AM/PM and month-first — but the moment someone picks one, that choice is theirs
+// and stays put however the app's language changes afterwards.
+const clockPref = () => localStorage.getItem("sb_clock") || (UI_LANG === "he" ? "24" : "12");
+const datePref = () => localStorage.getItem("sb_dateFormat") || (UI_LANG === "he" ? "dmy" : "mdy");
+// Hebrew has no month-first habit to honour, so only English swaps between the two orders
+const dateLocale = () => (UI_LANG === "he" ? "he-IL" : datePref() === "mdy" ? "en-US" : "en-GB");
+const rangeFormats = {};
+const rangeFormat = () => {
+  const loc = dateLocale();
+  rangeFormats[loc] = rangeFormats[loc] || new Intl.DateTimeFormat(loc, { month: "short", day: "numeric" });
+  return rangeFormats[loc];
+};
 const moneyFormat = new Intl.NumberFormat(LOCALE, { style: "currency", currency: "ILS" });
 
 // index.html's words carry data-l (text), data-l-html (text with markup) or data-l-aria (a label): keys into UI_TEXT
@@ -152,6 +165,16 @@ window.addEventListener("load", () => {
     showView("pay");
   });
   el("langBtn").addEventListener("click", switchLanguage);
+  el("clockSelect").value = clockPref();
+  el("clockSelect").addEventListener("change", (e) => {
+    localStorage.setItem("sb_clock", e.target.value);
+    refreshFormats();
+  });
+  el("dateSelect").value = datePref();
+  el("dateSelect").addEventListener("change", (e) => {
+    localStorage.setItem("sb_dateFormat", e.target.value);
+    refreshFormats();
+  });
   el("toast").addEventListener("click", () => (el("toast").hidden = true));
   window.addEventListener("beforeunload", (e) => {
     if (isDirty() || settingsDirty()) {
@@ -427,7 +450,7 @@ function dateStr(d) {
 
 // "Monday, September 14", in the app's language
 function longDay(ds) {
-  return new Date(ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "long", month: "long", day: "numeric" });
+  return new Date(ds + "T00:00").toLocaleDateString(dateLocale(), { weekday: "long", month: "long", day: "numeric" });
 }
 
 function weekDates(first) {
@@ -447,8 +470,9 @@ function weekName(first) {
 }
 
 function formatRange(from, to) {
-  if (rangeFormat.formatRange) return rangeFormat.formatRange(from, to);
-  return rangeFormat.format(from) + " – " + rangeFormat.format(to);
+  const shape = rangeFormat();
+  if (shape.formatRange) return shape.formatRange(from, to);
+  return shape.format(from) + " – " + shape.format(to);
 }
 
 // ---------- Board ----------
@@ -629,7 +653,37 @@ function savedShifts(ds) {
   return list;
 }
 
-const clock = (d) => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// The sheet and the PDF are payroll records going to the company, so their dates and times keep one
+// fixed shape — dd/mm/yyyy and 24-hour — whatever any individual phone is set to show
+const dmy = (d) => pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + "/" + d.getFullYear();
+const clock24 = (d) => pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+
+// On screen, both follow this phone's preference
+const shownDate = (d) =>
+  datePref() === "mdy" ? pad2(d.getMonth() + 1) + "/" + pad2(d.getDate()) + "/" + d.getFullYear() : dmy(d);
+const clock = (d) =>
+  clockPref() === "12" ? d.toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit", hour12: true }) : clock24(d);
+
+// Dates and times are formatted as they're drawn, so changing either only needs what's on screen redrawn
+function refreshFormats() {
+  Object.keys(daysState).forEach(syncDay);
+  Object.keys(weekEls).forEach((key) => {
+    const title = weekEls[key].section.querySelector(".week-title");
+    if (!title) return;
+    const first = new Date(key + "T00:00");
+    const last = new Date(first);
+    last.setDate(last.getDate() + 6);
+    const name = weekName(first);
+    const range = formatRange(first, last);
+    title.innerHTML = name ? name + ' <span class="week-dates">' + range + "</span>" : range;
+  });
+  if (payData && payData.lines) {
+    renderPayLines(payData.lines);
+    renderSendState();
+  }
+}
 
 // How many days after its start date a timed shift ended (1 for a night shift)
 function daysLater(event) {
@@ -883,9 +937,11 @@ function shiftForm(ds, type, event) {
 
   const f = form.elements;
   f.startDate.value = start ? dateStr(start) : ds;
-  f.startTime.value = start ? clock(start) : "";
+  // A time input only accepts 24-hour "HH:MM" as its value — the phone draws it in its own format.
+  // Anything else, such as this app's AM/PM display, is rejected and leaves the field blank.
+  f.startTime.value = start ? clock24(start) : "";
   f.endDate.value = end ? dateStr(end) : ds;
-  f.endTime.value = end ? clock(end) : "";
+  f.endTime.value = end ? clock24(end) : "";
   if (type === OTHER) {
     f.amount.value = props.amount || "";
     f.note.value = props.note || "";
@@ -1058,7 +1114,7 @@ const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 // Settings tab: A = label (in the report's language), B = value, C = key (a hidden column). Values are found by
 // key, so rows moved by hand still work. "" is an empty row.
-const SETTINGS_ROWS = ["title", "", "full_name", "company_email", "report_language", "", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+const SETTINGS_ROWS = ["title", "", "full_name", "company_email", "bcc_email", "report_language", "", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
 
 let sheetId = localStorage.getItem("sb_sheetId");
 let settings = null; // { full_name, company_email, rate_* } as last read from or saved to the sheet
@@ -1284,7 +1340,6 @@ function monthTotals(lines) {
 // formulas, so the sheet always matches the app. `at` says where each part starts, for the formatting.
 function monthTable(monthDate, lines, totals, s, lang, corrected) {
   const T = REPORT_TEXT[lang] || REPORT_TEXT.he;
-  const pad = (n) => String(n).padStart(2, "0");
   const monthName = monthDate.toLocaleDateString(T.locale, { month: "long" });
   const year = String(monthDate.getFullYear());
   const at = {};
@@ -1311,8 +1366,8 @@ function monthTable(monthDate, lines, totals, s, lang, corrected) {
   lines.forEach((line) => {
     const day = new Date(line.ds + "T00:00");
     const later = line.missingTimes ? 0 : daysLater(line.event);
-    const startText = line.missingTimes ? "" : clock(new Date(line.event.start.dateTime));
-    const endText = line.missingTimes ? "" : clock(new Date(line.event.end.dateTime)) + (later > 0 ? " " + T.later(later) : "");
+    const startText = line.missingTimes ? "" : clock24(new Date(line.event.start.dateTime));
+    const endText = line.missingTimes ? "" : clock24(new Date(line.event.end.dateTime)) + (later > 0 ? " " + T.later(later) : "");
     const details = [];
     const note = privateProps(line.event).note;
     if (line.type === OTHER && note) details.push(note);
@@ -1321,7 +1376,7 @@ function monthTable(monthDate, lines, totals, s, lang, corrected) {
     );
     if (line.missingTimes) details.push(T.noTimes);
     rows.push([
-      pad(day.getDate()) + "/" + pad(day.getMonth() + 1) + "/" + day.getFullYear(),
+      dmy(day),
       T.days[day.getDay()],
       T.types[line.type],
       startText,
@@ -1574,7 +1629,7 @@ function updateSheet() {
 
 // ---------- Pay view ----------
 
-const SETTING_KEYS = ["full_name", "company_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
+const SETTING_KEYS = ["full_name", "company_email", "bcc_email", "report_language", "rate_warehouse", "rate_event", "rate_extra", "rate_night"];
 let payMonth = null; // the 1st of the month shown on the Pay view
 let pendingView = null; // the view to return to after signing in again (e.g. to grant the Drive permission)
 let viewBeforeSettings = "shifts"; // where the settings were opened from
@@ -1720,7 +1775,9 @@ function submitSettings(e) {
   if (!values.full_name) return fail(L.errFullName);
   const nameIssue = nameProblem(values);
   if (nameIssue) return fail(nameIssue);
-  if (values.company_email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.company_email)) return fail(L.errEmail);
+  const looksLikeEmail = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+  if (values.company_email && !looksLikeEmail(values.company_email)) return fail(L.errEmail);
+  if (values.bcc_email && !looksLikeEmail(values.bcc_email)) return fail(L.errEmail);
   error.hidden = true;
   const btn = form.querySelector('[type="submit"]');
   btn.disabled = true;
@@ -1835,7 +1892,7 @@ function renderPayLines(lines) {
 }
 
 function lineWhen(line) {
-  const day = new Date(line.ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" });
+  const day = new Date(line.ds + "T00:00").toLocaleDateString(dateLocale(), { weekday: "short", day: "numeric", month: "short" });
   return line.missingTimes ? day : day + " · " + timeRange(line.event);
 }
 
@@ -1890,7 +1947,7 @@ function renderSendState() {
   let text;
   let tone = "";
   if (closed) {
-    const date = new Date(sent.sentAt).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" });
+    const date = shownDate(new Date(sent.sentAt));
     const drifted = monthFingerprint(lines) !== sent.fingerprint;
     text = L.sentOn(date, sent.to, sent.corrections > 0) + (drifted ? " " + L.drift : "");
     tone = drifted ? " is-warning" : " is-sent";
@@ -1959,12 +2016,13 @@ function openSendPanel() {
   facts.className = "send-facts";
   [
     [L.sendTo, settings.company_email, "ltr"],
+    settings.bcc_email ? [L.sendCopyTo, settings.bcc_email, "ltr"] : null,
     [L.sendName, settings.full_name, "auto"],
     [L.reportLanguage, T.langName],
     [L.tabShifts, L.countShifts(lines.length)],
     [L.totalToPay + " (" + L.grossSalary + ")", moneyFormat.format(totals.salary)],
     [L.reimbursement, moneyFormat.format(totals.expenses)],
-  ].forEach(([label, value, dir]) => {
+  ].filter(Boolean).forEach(([label, value, dir]) => {
     const row = document.createElement("div");
     const dd = textEl("dd", "", value);
     if (dir) dd.dir = dir;
@@ -2324,6 +2382,7 @@ function makeReportPdf(table, title) {
 function deliverMonth({ month, T, pdf, sent, totals, lines, rates, tabId }) {
   const name = settings.full_name;
   const to = settings.company_email;
+  const bcc = settings.bcc_email || ""; // the person's own copy, hidden from the company
   const monthName = monthLabel(month, T.locale);
   const corrected = !!sent;
   const sheetMoney = (n) => "₪" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // as in the PDF
@@ -2331,6 +2390,7 @@ function deliverMonth({ month, T, pdf, sent, totals, lines, rates, tabId }) {
   const fileName = T.fileName(monthName, name, corrected).replace(/[\\/:*?"<>|]/g, "-");
   const email = {
     to,
+    bcc,
     subject: T.emailSubject(monthName, name, corrected),
     paragraphs: T.emailBody({ month: monthName, salary: sheetMoney(totals.salary), expenses: sheetMoney(totals.expenses), name, replaces }).filter(Boolean),
     rtl: T === REPORT_TEXT.he,
@@ -2371,7 +2431,7 @@ function toBase64(bytes) {
 
 // The email as MIME: the text as plain and as HTML (right to left for a Hebrew report), and the PDF attached.
 // Everything that isn't ASCII travels base64-encoded, headers included, so Hebrew arrives intact.
-function sendEmail({ to, subject, paragraphs, rtl, pdf, fileName, asciiName }) {
+function sendEmail({ to, bcc, subject, paragraphs, rtl, pdf, fileName, asciiName }) {
   const utf8 = (s) => toBase64(new TextEncoder().encode(s));
   const wrap = (b64) => b64.replace(/.{76}(?=.)/g, "$&\r\n");
   const word = (s) => "=?UTF-8?B?" + utf8(s) + "?=";
@@ -2394,6 +2454,7 @@ function sendEmail({ to, subject, paragraphs, rtl, pdf, fileName, asciiName }) {
     const alt = "=_sb_alt_" + Date.now().toString(36);
     const mime = [
       "To: " + to,
+      ...(bcc ? ["Bcc: " + bcc] : []), // Gmail strips this from what the company receives
       "Subject: " + header(subject),
       "MIME-Version: 1.0",
       'Content-Type: multipart/mixed; boundary="' + mixed + '"',
@@ -2524,7 +2585,7 @@ function openMissingTimes() {
     const form = shiftForm(ds, type, event);
     form.dataset.keepOpen = "1";
     form.querySelector("h3").textContent =
-      L.types[type] + " · " + new Date(ds + "T00:00").toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
+      L.types[type] + " · " + new Date(ds + "T00:00").toLocaleDateString(dateLocale(), { weekday: "short", month: "short", day: "numeric" });
     panel.appendChild(form);
   });
   panel.showModal();

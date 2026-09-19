@@ -386,6 +386,8 @@ button {
 }
 
 #calendarSelect,
+#clockSelect,
+#dateSelect,
 .settings-form select {
   width: 100%;
   min-height: 48px;

@@ -93,6 +93,7 @@ function stub(scenario, lang) {
     ["הגדרות"], [],
     ["שם מלא", "אלכס מורגן", "full_name"],
     ["מייל החברה", "shifts@example.co.il", "company_email"],
+    ["לשלוח עותק גם אל", "alex.morgan.shifts@example.com", "bcc_email"],
     ["שפת הדוח", "עברית", "report_language"], [],
     ["מחסן, לשעה (₪)", "55", "rate_warehouse"],
     ["אירוע, ליום (₪)", "600", "rate_event"],
