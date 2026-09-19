@@ -61,13 +61,14 @@ const UI_TEXT = {
     // Signing in and calendars
     signInFailed: "Sign-in failed: ",
     noCalendarAccess: "Calendar access wasn't granted — sign in again and allow Google Calendar",
-    sessionExpired: "Session expired — please sign in again",
+    signInAgain: "Your hour with Google is up — tap to carry on.",
     offlineBanner: "You're offline. ShiftBoard still opens, but your shifts live in Google Calendar — they'll load when you're back on the internet.",
     offlineSince: (date, time) =>
       "You're offline. These are your shifts as they were on " + date + " at " + time + " — they'll refresh when you're back.",
     offlineToast: "You're offline — ShiftBoard can't reach Google right now",
     backOnline: "Back online",
     draftKept: "Kept on this phone — it'll be saved when you're back online.",
+    draftKeptSignedOut: "Kept on this phone — it'll be saved when you sign in.",
     draftWaiting: (n) => (n === 1 ? "1 change waiting to be saved" : n + " changes waiting to be saved"),
     draftKinds: { times: "times and extras", add: "added", remove: "removed" },
     draftsTitle: "Changes waiting to be saved",
@@ -291,13 +292,14 @@ const UI_TEXT = {
 
     signInFailed: "הכניסה נכשלה: ",
     noCalendarAccess: "לא ניתנה גישה ליומן. היכנסו שוב ואשרו גישה ליומן Google",
-    sessionExpired: "תם זמן החיבור. היכנסו שוב",
+    signInAgain: "השעה מול Google נגמרה — הקישו כדי להמשיך.",
     offlineBanner: "אין חיבור לאינטרנט. האפליקציה נפתחת, אבל המשמרות שמורות ביומן Google ויופיעו כשהחיבור יחזור.",
     offlineSince: (date, time) =>
       "אין חיבור לאינטרנט. אלו המשמרות שלכם כפי שהיו ב־" + date + " בשעה " + time + " — הן יתעדכנו כשהחיבור יחזור.",
     offlineToast: "אין חיבור לאינטרנט. לא הצלחנו להגיע ל‑Google כרגע",
     backOnline: "החיבור חזר",
     draftKept: "נשמר בטלפון — ייכנס ליומן כשהחיבור יחזור.",
+    draftKeptSignedOut: "נשמר בטלפון — ייכנס ליומן אחרי הכניסה.",
     draftWaiting: (n) => (n === 1 ? "שינוי אחד ממתין לשמירה" : n + " שינויים ממתינים לשמירה"),
     draftKinds: { times: "שעות ותוספות", add: "נוסף", remove: "הוסר" },
     draftsTitle: "שינויים שממתינים לשמירה",

@@ -172,7 +172,7 @@ function boot() {
   ["signInBtn", "signOutBtn", "account", "accountEmail", "welcome", "workspace", "calendarSelect", "newCalendarBtn",
     "calendarEmpty", "earlierBtn", "board", "moreWeeksBtn", "saveBar", "statusText", "saveBtn", "toast", "needsTimesBtn", "dayPanel", "boardHint", "viewTabs", "tabShifts", "tabPay", "payView", "driveConnect",
     "connectDriveBtn", "payContent", "prevMonth", "nextMonth", "settingsForm", "writeSheetBtn", "openSheetLink", "langBtn", "sendBtn", "reopenBtn", "useRatesBtn", "sendReminderBtn",
-    "sendStatus", "sentPdfLink", "settingsView", "settingsBtn", "savingToBtn", "paySetup", "paySetupBtn", "settingsConnect", "settingsConnectBtn", "payMore", "clockSelect", "dateSelect"]
+    "sendStatus", "sentPdfLink", "settingsView", "settingsBtn", "savingToBtn", "paySetup", "paySetupBtn", "settingsConnect", "settingsConnectBtn", "payMore", "clockSelect", "dateSelect", "signInAgain"]
     .forEach((id) => (dom[id] = new FakeEl("div")));
   dom.root = new FakeEl("html");
   ["account", "workspace", "saveBar", "calendarEmpty", "toast", "needsTimesBtn", "viewTabs", "payView", "driveConnect", "payContent",
@@ -348,9 +348,12 @@ const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
   lastRequest = null;
   dom = boot();
   await flush();
-  dom.signInBtn.fire("click");
-  check("Expired token: one-click sign-in for the same account",
-    !dom.welcome.hidden && lastRequest && lastRequest.prompt === "" && lastRequest.login_hint === ME,
+  check("Expired token: the board it last read stays up, not the welcome page",
+    dom.welcome.hidden && !dom.workspace.hidden && !dom.signInAgain.hidden,
+    "welcome=" + dom.welcome.hidden + " board=" + dom.workspace.hidden + " bar=" + dom.signInAgain.hidden);
+  dom.signInAgain.fire("click");
+  check("And one tap signs the same account back in",
+    lastRequest && lastRequest.prompt === "" && lastRequest.login_hint === ME,
     "request=" + JSON.stringify(lastRequest));
 
   // Sign out

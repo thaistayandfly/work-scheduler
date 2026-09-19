@@ -164,6 +164,7 @@ window.addEventListener("load", () => {
     payMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     showView("pay");
   });
+  el("signInAgain").addEventListener("click", signIn);
   el("langBtn").addEventListener("click", switchLanguage);
   el("clockSelect").value = clockPref();
   el("clockSelect").addEventListener("change", (e) => {
@@ -236,9 +237,21 @@ function restoreSession() {
   } catch (e) {}
   if (saved && saved.accessToken && saved.expiresAt - Date.now() > MIN_RESTORE_MS) {
     startSession(saved.accessToken, saved.expiresAt, saved.scope || "");
-  } else {
-    localStorage.removeItem("sb_token");
+    return;
   }
+  localStorage.removeItem("sb_token");
+  // The hour ran out while the app was closed, but this phone still knows the calendar and the shifts it
+  // last read. Showing those with "tap to carry on" beats a welcome page that hides work already done.
+  const known = keptCalendars();
+  if (!known || !known.length) return;
+  const email = localStorage.getItem("sb_email");
+  if (email) {
+    el("accountEmail").textContent = email;
+    el("accountEmail").title = email;
+  }
+  showSignedIn(true);
+  el("signInAgain").hidden = false;
+  showCalendars(known);
 }
 
 function onTokenReceived(resp) {
@@ -272,6 +285,7 @@ function startSession(token, expiresAt, scope) {
   accessToken = token;
   tokenExpiresAt = expiresAt;
   grantedScopes = scope || "";
+  el("signInAgain").hidden = true;
   showSignedIn(true);
   fetchUserEmail();
   // Signing back in after the token expired mid-edit: refresh what's saved but keep the unsaved toggles
@@ -315,20 +329,26 @@ function fetchUserEmail() {
     .catch(() => {});
 }
 
+// A failure that only a sign-in can fix. Marked so a change can be kept as a draft rather than lost,
+// the same way one made with no signal is: the work comes first, the signing in after.
+function needsSignIn(message) {
+  const err = new Error(message);
+  err.needsSignIn = true;
+  return err;
+}
+
 function apiFetch(url, options = {}) {
   if (Date.now() > tokenExpiresAt - 5000) {
-    showToast(L.sessionExpired, true);
-    resetToSignedOut();
-    return Promise.reject(new Error("token expired"));
+    sessionEnded();
+    return Promise.reject(needsSignIn("token expired"));
   }
   options.headers = Object.assign({}, options.headers, {
     Authorization: "Bearer " + accessToken,
   });
   return fetch(url, options).then((r) => {
     if (r.status === 401) {
-      showToast(L.sessionExpired, true);
-      resetToSignedOut();
-      throw new Error("unauthorized");
+      sessionEnded();
+      throw needsSignIn("unauthorized");
     }
     // fetch() only rejects on network errors — Google's 4xx/5xx replies have to be failures too
     if (!r.ok) {
@@ -389,14 +409,15 @@ const draftsFor = (ds) => readDrafts().filter((d) => d.ds === ds).length;
 // offer again once there's a signal. Anything else still fails exactly as it did before.
 function sendOrDraft(url, options, about) {
   return apiFetch(url, options).catch((err) => {
-    if (!isNetworkError(err) && !isOffline()) throw err;
+    if (!isNetworkError(err) && !isOffline() && !err.needsSignIn) throw err;
     const list = readDrafts();
     list.push(Object.assign({ at: Date.now(), url, method: options.method, body: options.body || "" }, about));
     writeDrafts(list);
-    showOffline(true);
+    if (!err.needsSignIn) showOffline(true);
     if (about && about.ds && daysState[about.ds]) syncDay(about.ds);
     // Shaped like a reply so the callers that read one carry on unchanged
-    return { drafted: true, json: () => Promise.resolve({ drafted: true }) };
+    const kept = { drafted: true, needsSignIn: !!err.needsSignIn };
+    return Object.assign({ json: () => Promise.resolve(kept) }, kept);
   });
 }
 
@@ -475,10 +496,21 @@ function showApiError(prefix, err) {
   showToast(prefix + ": " + err.message, true);
 }
 
+// The hour Google allows is up. Everything stays where it is — the board, the month, whatever was being
+// typed — and one tap carries on. Being thrown back to the welcome page for this was the worst of it.
+function sessionEnded() {
+  accessToken = null;
+  tokenExpiresAt = 0;
+  localStorage.removeItem("sb_token");
+  el("signInAgain").hidden = false;
+}
+
+// Signing out on purpose is different: that really does put the welcome page back
 function resetToSignedOut() {
   accessToken = null;
   tokenExpiresAt = 0;
   localStorage.removeItem("sb_token");
+  el("signInAgain").hidden = true;
   showSignedIn(false);
 }
 
@@ -861,7 +893,16 @@ function toggleShift(ds, type) {
 
 // Reads the calendar for the given weeks and shows what's saved, keeping toggles not saved yet
 function loadWeeks(list) {
-  if (!accessToken || !list.length) return;
+  if (!list.length) return;
+  // Signed out but the board is still up: show what was last read rather than a row of empty days
+  if (!accessToken) {
+    const kept = keptShifts(list);
+    if (kept) {
+      showWeeks(kept.items, list);
+      setWeeksBusy(list, false);
+    }
+    return;
+  }
   const seq = boardSeq;
   const start = new Date(Math.min(...list));
   start.setDate(start.getDate() - 1); // pad a day either side to dodge timezone edge effects on all-day events
@@ -1397,7 +1438,7 @@ function submitShiftForm(form, type, event) {
       const panel = el("dayPanel");
       form.remove();
       if (!form.dataset.keepOpen || !panel.querySelector("form")) panel.close();
-      showToast(r && r.drafted ? L.draftKept : L.typeSaved(type));
+      showToast(r && r.drafted ? (r.needsSignIn ? L.draftKeptSignedOut : L.draftKept) : L.typeSaved(type));
       refreshAfterShiftChange();
     })
     .catch((err) => {
@@ -3003,11 +3044,13 @@ function saveChanges() {
   Promise.allSettled(tasks).then((results) => {
     saving = false;
     const failures = results.filter((r) => r.status === "rejected");
-    const waiting = results.filter((r) => r.value && r.value.drafted).length;
+    const waiting = results.filter((r) => r.value && r.value.drafted);
+    const waitingOnSignIn = waiting.some((r) => r.value.needsSignIn);
     if (failures.length) {
       showApiError(L.changesFailed(failures.length), failures[0].reason);
     } else {
-      showToast(waiting ? L.draftKept : L.savedCalendar); // nothing reached the calendar if it was drafted
+      // Nothing reached the calendar if it was drafted, so don't claim it did
+      showToast(waiting.length ? (waitingOnSignIn ? L.draftKeptSignedOut : L.draftKept) : L.savedCalendar);
     }
     updateSaveState();
     loadWeeks(weeks);

@@ -24,6 +24,7 @@ const IN_PAGE = [
   ["A day's panel: times, nights, expenses, Other jobs", "phase1.js", "en-loaded.html"],
   ["The app's own date and time boxes", "pick-fields.js", "en-panel.html"],
   ["Nothing colliding on a small phone", "narrow.js", "en-loaded.html", 320],
+  ["When the hour with Google runs out", "session.js", "en-loaded.html"],
   ["The offline notice, clear of the tabs", "offline-notice.js", "en-loaded.html"],
   ["Shifts kept for when there's no signal", "offline-cache.js", "en-loaded.html"],
   ["Opening the app with no signal at all", "offline-start.js", "en-offline-start.html"],

@@ -1142,6 +1142,19 @@ html:has(dialog[open]) {
 }
 
 /* The shift said back in the format this phone chose, under boxes the phone draws its own way */
+/* Same note as being offline, but this one is a button: the hour is up and one tap carries on */
+.sign-in-again {
+  position: sticky;
+  top: var(--s2);
+  z-index: 4;
+  cursor: pointer;
+  border-color: var(--ink);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+  font-weight: 600;
+  text-align: start;
+}
+
 /* How much of the month's total hasn't been worked yet — quiet, but said rather than left to be worked out */
 .to-come {
   margin: 0;
