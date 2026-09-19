@@ -10,7 +10,7 @@ const path = require("path");
 
 const toUrl = (p) => "file:///" + p.replace(/\\/g, "/");
 
-const SCENARIOS = ["signed-out", "loading", "loaded", "dirty", "error", "panel", "panel-filled", "panel-empty", "missing", "pay", "pay-connect", "pay-settings", "reminder"];
+const SCENARIOS = ["signed-out", "loading", "loaded", "dirty", "error", "panel", "panel-filled", "panel-empty", "missing", "pay", "pay-connect", "pay-settings", "reminder", "offline-start"];
 
 function stub(scenario, lang) {
   return `<script>
@@ -86,6 +86,20 @@ function stub(scenario, lang) {
     { id: "i", summary: "Warehouse", start: { date: day(-5) } },
     { id: "j", summary: "Event", start: { date: day(-20) } }
   ];
+  // Opening with no signal: the phone already knows the calendar and this week's shifts from last time
+  if (scenario === "offline-start") {
+    var cal = "me@example.com";
+    var first = new Date(mon);
+    first.setDate(first.getDate() - ${lang === "he" ? 1 : 0}); // a Hebrew week starts on Sunday
+    var firstKey = first.getFullYear() + "-" + pad(first.getMonth() + 1) + "-" + pad(first.getDate());
+    var thisWeek = {};
+    thisWeek[firstKey] = events.slice(0, 3);
+    try {
+      localStorage.setItem("sb_calendarId", cal);
+      localStorage.setItem("sb_calendars", JSON.stringify([{ id: cal, summary: "alex.morgan.shifts@example.com", primary: true }]));
+      localStorage.setItem("sb_shifts_" + cal, JSON.stringify({ at: new Date(2026, 8, 15, 20, 30).getTime(), weeks: thisWeek }));
+    } catch (e) {}
+  }
   window.__tabs = [{ properties: { sheetId: 0, title: "Settings" }, developerMetadata: [] }];
   window.__tabValues = {};
   window.__nextId = 100;
@@ -109,6 +123,8 @@ function stub(scenario, lang) {
   window.fetch = function (url, opts) {
     url = String(url);
     if (/^(blob|data):/.test(url)) return realFetch(url, opts); // the page's own files, e.g. reading a drawn PDF back
+    // Opened with no signal at all: every request fails the way one does when it never leaves the phone
+    if (scenario === "offline-start") return Promise.reject(new TypeError("Failed to fetch"));
     var method = (opts && opts.method) || "GET";
     if (method !== "GET") window.__requests.push({ url: url, method: method, body: (opts && opts.body) || null });
     // Google's PDF of a tab, Gmail, and uploads to Drive

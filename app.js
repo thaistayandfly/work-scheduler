@@ -489,30 +489,66 @@ function loadCalendars() {
     .then((r) => r.json())
     .then((data) => {
       // Read-only calendars (Holidays, Birthdays, subscriptions) reject new events
-      calendars = (data.items || []).filter((cal) => cal.accessRole === "owner" || cal.accessRole === "writer");
-      const select = el("calendarSelect");
-      select.innerHTML = "";
-      calendars.forEach((cal) => {
-        const opt = document.createElement("option");
-        opt.value = cal.id;
-        opt.dir = "auto"; // a calendar's name can be in either language, or an email address
-        opt.textContent = cal.summary + (cal.primary ? L.mainCalendar : "");
-        select.appendChild(opt);
-      });
-      // The list holds real IDs, never the "primary" alias, so fall back to the calendar flagged
-      // primary rather than whichever one the API happened to return first
-      if (!calendars.some((c) => c.id === selectedCalendarId)) {
-        const fallback = calendars.find((c) => c.primary) || calendars[0];
-        selectedCalendarId = fallback ? fallback.id : "primary";
-      }
-      localStorage.setItem("sb_calendarId", selectedCalendarId);
-      select.value = selectedCalendarId;
-      el("calendarEmpty").hidden = calendars.length > 0;
-      updateSavingTo();
-      if (calendars.length) resetBoard();
-      else clearBoard();
+      const usable = (data.items || []).filter((cal) => cal.accessRole === "owner" || cal.accessRole === "writer");
+      keepCalendars(usable);
+      showCalendars(usable);
     })
-    .catch((err) => showApiError(L.errLoadCalendars, err));
+    .catch((err) => {
+      // Opening the app with no signal used to stop right here, and because the board is only built
+      // once the calendars are known, nothing was left to show the kept shifts in — an empty app.
+      // The calendars seen last time are enough to build it and let those shifts back on screen.
+      const kept = isNetworkError(err) || isOffline() ? keptCalendars() : null;
+      if (kept && kept.length) {
+        showCalendars(kept);
+        showOffline(true);
+        return;
+      }
+      showApiError(L.errLoadCalendars, err);
+    });
+}
+
+const CALENDARS_KEY = "sb_calendars";
+
+function keepCalendars(list) {
+  try {
+    localStorage.setItem(CALENDARS_KEY, JSON.stringify(list.map((c) => ({ id: c.id, summary: c.summary, primary: !!c.primary }))));
+  } catch (e) {
+    // A full or blocked store only costs us the offline list, not this load
+  }
+}
+
+function keptCalendars() {
+  try {
+    const list = JSON.parse(localStorage.getItem(CALENDARS_KEY) || "null");
+    return Array.isArray(list) ? list : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function showCalendars(list) {
+  calendars = list;
+  const select = el("calendarSelect");
+  select.innerHTML = "";
+  calendars.forEach((cal) => {
+    const opt = document.createElement("option");
+    opt.value = cal.id;
+    opt.dir = "auto"; // a calendar's name can be in either language, or an email address
+    opt.textContent = cal.summary + (cal.primary ? L.mainCalendar : "");
+    select.appendChild(opt);
+  });
+  // The list holds real IDs, never the "primary" alias, so fall back to the calendar flagged
+  // primary rather than whichever one the API happened to return first
+  if (!calendars.some((c) => c.id === selectedCalendarId)) {
+    const fallback = calendars.find((c) => c.primary) || calendars[0];
+    selectedCalendarId = fallback ? fallback.id : "primary";
+  }
+  localStorage.setItem("sb_calendarId", selectedCalendarId);
+  select.value = selectedCalendarId;
+  el("calendarEmpty").hidden = calendars.length > 0;
+  updateSavingTo();
+  if (calendars.length) resetBoard();
+  else clearBoard();
 }
 
 function createNewCalendar() {
