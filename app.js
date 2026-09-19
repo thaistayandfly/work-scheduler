@@ -354,6 +354,106 @@ function isNetworkError(err) {
 
 const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
+// ---------- Drafts: changes made with no signal ----------
+
+const draftKey = () => "sb_drafts_" + (selectedCalendarId || "");
+let draftsAre = { key: null, list: null }; // syncDay asks for these on every day, so they're read once
+let draftsOffered = false;
+
+function readDrafts() {
+  const key = draftKey();
+  if (draftsAre.key === key && draftsAre.list) return draftsAre.list;
+  let list = [];
+  try {
+    const kept = JSON.parse(localStorage.getItem(key) || "[]");
+    if (Array.isArray(kept)) list = kept;
+  } catch (e) {
+    list = []; // hand-edited or broken data mustn't stop the board
+  }
+  draftsAre = { key, list };
+  return list;
+}
+
+function writeDrafts(list) {
+  draftsAre = { key: draftKey(), list };
+  try {
+    localStorage.setItem(draftKey(), JSON.stringify(list));
+  } catch (e) {
+    // A full or blocked store can't be helped here; the change lives in this session at least
+  }
+}
+
+const draftsFor = (ds) => readDrafts().filter((d) => d.ds === ds).length;
+
+// Sends a change to the calendar, or — when the request never left the phone — keeps it as a draft to
+// offer again once there's a signal. Anything else still fails exactly as it did before.
+function sendOrDraft(url, options, about) {
+  return apiFetch(url, options).catch((err) => {
+    if (!isNetworkError(err) && !isOffline()) throw err;
+    const list = readDrafts();
+    list.push(Object.assign({ at: Date.now(), url, method: options.method, body: options.body || "" }, about));
+    writeDrafts(list);
+    showOffline(true);
+    if (about && about.ds && daysState[about.ds]) syncDay(about.ds);
+    // Shaped like a reply so the callers that read one carry on unchanged
+    return { drafted: true, json: () => Promise.resolve({ drafted: true }) };
+  });
+}
+
+// Back on a signal with changes still waiting: they're listed, one line each, and nothing reaches the
+// calendar until someone says so. Anything that then fails stays waiting rather than disappearing.
+function offerDrafts() {
+  const list = readDrafts();
+  if (!list.length) return;
+  const panel = openPanel(L.draftsTitle);
+  panel.appendChild(textEl("p", "panel-note", L.draftsIntro(list.length)));
+  const what = document.createElement("ul");
+  what.className = "draft-list";
+  list.forEach((d) => what.appendChild(textEl("li", "", draftLabel(d))));
+  panel.appendChild(what);
+  const actions = document.createElement("div");
+  actions.className = "form-actions";
+  actions.append(
+    makeButton(L.discardDrafts, "btn-text", () => {
+      writeDrafts([]);
+      panel.close();
+      refreshAfterShiftChange();
+    }),
+    makeButton(L.saveDrafts, "btn-primary", () => {
+      panel.close();
+      sendDrafts();
+    })
+  );
+  panel.appendChild(actions);
+  panel.showModal();
+}
+
+function sendDrafts() {
+  const list = readDrafts();
+  if (!list.length) return;
+  Promise.allSettled(
+    list.map((d) =>
+      apiFetch(d.url, {
+        method: d.method,
+        headers: d.body ? { "Content-Type": "application/json" } : {},
+        body: d.body || undefined,
+      })
+    )
+  ).then((results) => {
+    const stuck = list.filter((d, i) => results[i].status === "rejected");
+    writeDrafts(stuck);
+    showToast(stuck.length ? L.draftsStuck(stuck.length) : L.draftsSaved(list.length), stuck.length > 0);
+    refreshAfterShiftChange();
+  });
+}
+
+function draftLabel(d) {
+  const when = d.ds
+    ? new Date(d.ds + "T00:00").toLocaleDateString(dateLocale(), { weekday: "short", day: "numeric", month: "short" })
+    : "";
+  return when + " · " + (L.types[d.type] || d.type) + " · " + (L.draftKinds[d.kind] || d.kind);
+}
+
 function showOffline(on, at) {
   const banner = el("offlineBanner");
   if (!banner) return;
@@ -643,9 +743,12 @@ function syncDay(ds) {
   });
   // Under the tapes: real times and extras once entered, and a nudge for past shifts still missing times
   const shown = savedShifts(ds).filter(({ event }) => isTimed(event) || ds <= dateStr(new Date()));
-  dayMeta[ds].hidden = shown.length === 0;
+  const lines = shown.map(({ type, event }) => shiftSummary(type, event));
+  const waiting = draftsFor(ds);
+  if (waiting) lines.push(L.draftWaiting(waiting)); // a change made with no signal, not yet in the calendar
+  dayMeta[ds].hidden = lines.length === 0;
   dayMeta[ds].classList.toggle("needs-times", shown.some(({ event }) => !isTimed(event)));
-  dayMeta[ds].textContent = shown.map(({ type, event }) => shiftSummary(type, event)).join("\n");
+  dayMeta[ds].textContent = lines.join("\n");
 }
 
 function savedShifts(ds) {
@@ -737,6 +840,11 @@ function loadWeeks(list) {
       keepShifts(list, items); // so there's something to show next time there's no signal
       setWeeksBusy(list, false);
       showOffline(false);
+      // Changes made offline in an earlier session: the "online" event never fired, so ask here instead
+      if (!draftsOffered && readDrafts().length) {
+        draftsOffered = true;
+        offerDrafts();
+      }
     })
     .catch((err) => {
       if (seq !== boardSeq) return;
@@ -1146,12 +1254,12 @@ function submitShiftForm(form, type, event) {
   btn.disabled = true;
   btn.textContent = L.saving;
   saveShiftEvent(event && event.id, { type, start, end, extras, summary })
-    .then(() => {
+    .then((r) => {
       // In the missing-times list the other shifts stay open; everywhere else the panel is done
       const panel = el("dayPanel");
       form.remove();
       if (!form.dataset.keepOpen || !panel.querySelector("form")) panel.close();
-      showToast(L.typeSaved(type));
+      showToast(r && r.drafted ? L.draftKept : L.typeSaved(type));
       refreshAfterShiftChange();
     })
     .catch((err) => {
@@ -1162,7 +1270,7 @@ function submitShiftForm(form, type, event) {
 }
 
 function removeOtherJob(event) {
-  deleteEvent(event.id)
+  deleteEvent(event.id, eventDate(event), OTHER)
     .then(() => {
       el("dayPanel").close();
       showToast(L.jobRemoved);
@@ -2706,7 +2814,7 @@ function saveChanges() {
         tasks.push(insertEvent(ds, type));
       } else if (!entry.active && entry.originalActive) {
         // Every matching event that day goes, so a duplicate can't make the type reappear
-        entry.eventIds.forEach((id) => tasks.push(deleteEvent(id)));
+        entry.eventIds.forEach((id) => tasks.push(deleteEvent(id, ds, type)));
       }
     });
   });
@@ -2719,10 +2827,11 @@ function saveChanges() {
   Promise.allSettled(tasks).then((results) => {
     saving = false;
     const failures = results.filter((r) => r.status === "rejected");
+    const waiting = results.filter((r) => r.value && r.value.drafted).length;
     if (failures.length) {
       showApiError(L.changesFailed(failures.length), failures[0].reason);
     } else {
-      showToast(L.savedCalendar);
+      showToast(waiting ? L.draftKept : L.savedCalendar); // nothing reached the calendar if it was drafted
     }
     updateSaveState();
     loadWeeks(weeks);
@@ -2749,11 +2858,15 @@ function saveShiftEvent(eventId, { type, start, end, extras, summary }) {
     extendedProperties: { private: Object.assign({ appTag: APP_TAG, workType: type }, extras) },
   };
   if (summary) body.summary = summary;
-  return apiFetch(eventId ? eventsUrl(eventId) : eventsUrl(), {
-    method: eventId ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then((r) => r.json());
+  return sendOrDraft(
+    eventId ? eventsUrl(eventId) : eventsUrl(),
+    {
+      method: eventId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    { ds: dateStr(start), type, kind: "times" }
+  ).then((r) => r.json());
 }
 
 function insertEvent(ds, type) {
@@ -2767,23 +2880,25 @@ function insertEvent(ds, type) {
     extendedProperties: { private: { appTag: APP_TAG, workType: type } },
   };
 
-  return apiFetch(
+  return sendOrDraft(
     "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(selectedCalendarId) + "/events",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }
+    },
+    { ds, type, kind: "add" }
   );
 }
 
-function deleteEvent(eventId) {
-  return apiFetch(
+function deleteEvent(eventId, ds, type) {
+  return sendOrDraft(
     "https://www.googleapis.com/calendar/v3/calendars/" +
       encodeURIComponent(selectedCalendarId) +
       "/events/" +
       eventId,
-    { method: "DELETE" }
+    { method: "DELETE" },
+    { ds, type, kind: "remove" }
   );
 }
 
@@ -2824,6 +2939,7 @@ if (typeof window !== "undefined" && window.addEventListener) {
     showToast(L.backOnline);
     loadWeeks(weeks);
     if (!el("payView").hidden) renderPayMonth();
+    offerDrafts();
   });
   showOffline(isOffline());
 }

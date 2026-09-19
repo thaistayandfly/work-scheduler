@@ -1123,6 +1123,16 @@ html:has(dialog[open]) {
   justify-self: start;
 }
 
+/* The changes waiting to be saved, one line each, before any of them reaches the calendar */
+.draft-list {
+  display: grid;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+  padding-inline-start: var(--s5);
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+
 .form-error {
   color: var(--danger-text);
   font-weight: 600;
