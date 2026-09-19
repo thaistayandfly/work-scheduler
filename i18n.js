@@ -146,14 +146,18 @@ const UI_TEXT = {
     couldntSave: "Couldn't save: ",
     errRemoveJob: "Couldn't remove the job",
     missingTitle: "Shifts missing times",
-    pastMissing: (n) => (n === 1 ? "1 past shift still needs its times" : n + " past shifts still need their times"),
+    // Not "past": this counts today too, so someone can fill in their times the moment they finish
+    pastMissing: (n) => (n === 1 ? "1 shift still needs its times" : n + " shifts still need their times"),
 
     // Pay
     openingSheet: "Opening your pay sheet…",
     loadingMonth: "Loading this month's shifts…",
     addRates: "Add your rates below to see your pay.",
     noShiftsMonth: "No shifts this month.",
-    notFinal: (n) => (n === 1 ? "1 shift has" : n + " shifts have") + " no times yet, so this total isn't final.",
+    // Only shifts already worked: one still to come has no times because it hasn't happened
+    notFinal: (n) => (n === 1 ? "1 shift you've worked has" : n + " shifts you've worked have") + " no times yet, so this total isn't final.",
+    toCome: "Still to come",
+    stillToCome: (money, n) => "Includes " + money + " for " + (n === 1 ? "1 shift" : n + " shifts") + " still to come.",
     allTimed: "Every shift has its times.",
     totalToPay: "Total to pay",
     grossSalary: "gross salary",
@@ -359,13 +363,16 @@ const UI_TEXT = {
     couldntSave: "השמירה נכשלה: ",
     errRemoveJob: "לא הצלחנו להסיר את העבודה",
     missingTitle: "משמרות בלי שעות",
-    pastMissing: (n) => (n === 1 ? "למשמרת אחת שעברה עדיין חסרות שעות" : "ל־" + n + " משמרות שעברו עדיין חסרות שעות"),
+    pastMissing: (n) => (n === 1 ? "למשמרת אחת עדיין חסרות שעות" : "ל־" + n + " משמרות עדיין חסרות שעות"),
 
     openingSheet: "פותח את גיליון השכר…",
     loadingMonth: "טוען את משמרות החודש…",
     addRates: "הוסיפו את התעריפים שלכם למטה כדי לראות את השכר.",
     noShiftsMonth: "אין משמרות בחודש הזה.",
-    notFinal: (n) => (n === 1 ? "למשמרת אחת" : "ל־" + n + " משמרות") + " עדיין אין שעות, אז הסכום עוד לא סופי.",
+    notFinal: (n) => (n === 1 ? "למשמרת אחת שעבדתם" : "ל־" + n + " משמרות שעבדתם") + " עדיין אין שעות, אז הסכום עוד לא סופי.",
+    toCome: "עוד לא התקיימה",
+    stillToCome: (money, n) =>
+      "כולל " + money + " עבור " + (n === 1 ? "משמרת אחת שעוד לא התקיימה" : n + " משמרות שעוד לא התקיימו") + ".",
     allTimed: "לכל המשמרות יש שעות.",
     totalToPay: "סה״כ לתשלום",
     grossSalary: "שכר ברוטו",

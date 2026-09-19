@@ -9,7 +9,7 @@
   await wait(300);
 
   check("The month is named in Hebrew", $("monthTitle").textContent === "ספטמבר 2026", $("monthTitle").textContent);
-  check("The status is in Hebrew", $("payStatus").textContent === "ל־7 משמרות עדיין אין שעות, אז הסכום עוד לא סופי.", $("payStatus").textContent);
+  check("The status is in Hebrew", $("payStatus").textContent === "ל־2 משמרות שעבדתם עדיין אין שעות, אז הסכום עוד לא סופי.", $("payStatus").textContent);
   const [salary, reimburse] = [...$("payTotals").querySelectorAll(".total-line")];
   check("Gross salary and the expenses reimbursement, apart, in shekels",
     norm(salary.textContent) === "סה״כ לתשלום שכר ברוטו4,667.50 ₪" && norm(reimburse.textContent) === "החזר הוצאות370.00 ₪",

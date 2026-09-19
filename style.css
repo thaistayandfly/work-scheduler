@@ -1124,6 +1124,14 @@ html:has(dialog[open]) {
 }
 
 /* The shift said back in the format this phone chose, under boxes the phone draws its own way */
+/* How much of the month's total hasn't been worked yet — quiet, but said rather than left to be worked out */
+.to-come {
+  margin: 0;
+  padding-block: var(--s2);
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
 /* Our own box, in the format this phone chose, with the phone's picker behind the button beside it */
 .pickable {
   position: relative;

@@ -2135,31 +2135,42 @@ function renderPayMonth() {
       const totals = monthTotals(lines);
       payData = { lines, totals, rates, sent };
       el("writeSheetBtn").disabled = false;
-      renderPayStatus(lines, totals, rates);
+      renderPayStatus(lines, rates);
       // Zeros everywhere mean nothing until the rates are in, so ask for those instead
       const set = ratesFrom(settings);
       el("paySetup").hidden = !!(settings.full_name && set.warehouse && set.event);
-      renderPayTotals(lines.length ? totals : null);
+      renderPayTotals(lines.length ? totals : null, lines);
       renderPayLines(lines);
       renderSendState();
     })
     .catch((err) => showApiError(L.errLoadMonth, err));
 }
 
-function renderPayStatus(lines, totals, rates) {
+// Later than today. Today's shift is happening now, so it counts as now — which is also why the board
+// still asks for its times: someone can fill them in the moment they finish.
+const stillToCome = (line) => line.ds > dateStr(new Date());
+
+function renderPayStatus(lines, rates) {
   const status = el("payStatus");
-  status.classList.toggle("needs-times", totals.missingTimes > 0);
+  // A shift still to come has no times because it hasn't happened; only worked ones are a gap to chase
+  const worked = lines.filter((line) => line.missingTimes && !stillToCome(line)).length;
+  status.classList.toggle("needs-times", worked > 0);
   if (!rates.warehouse && !rates.event) status.textContent = L.addRates;
   else if (!lines.length) status.textContent = L.noShiftsMonth;
-  else if (totals.missingTimes) status.textContent = L.notFinal(totals.missingTimes);
+  else if (worked) status.textContent = L.notFinal(worked);
+  else if (lines.some((line) => line.missingTimes)) status.textContent = ""; // only shifts still to come
   else status.textContent = L.allTimed;
 }
 
-function renderPayTotals(totals) {
+function renderPayTotals(totals, lines) {
   const box = el("payTotals");
   box.innerHTML = "";
   if (!totals) return;
   const money = (n) => moneyFormat.format(n);
+  // The total is the whole month, the same figure the company is sent. Part of it may not have been
+  // worked yet, which is worth saying out loud rather than leaving people to work out for themselves.
+  const ahead = (lines || []).filter(stillToCome);
+  const aheadPay = round2(ahead.reduce((sum, line) => sum + line.salary, 0));
   const { warehouse, event, nights, other } = totals;
   const rows = [
     [L.types.Warehouse, warehouse.count, L.countShifts(warehouse.count) + " · " + formatHours(warehouse.hours) + " · " + money(warehouse.pay)],
@@ -2170,6 +2181,8 @@ function renderPayTotals(totals) {
   // Salary first, the expenses reimbursement apart from it; the per-type breakdown stays quiet underneath
   box.innerHTML =
     '<p class="total-line"><span>' + L.totalToPay + " <small>" + L.grossSalary + "</small></span><strong>" + money(totals.salary) + "</strong></p>" +
+    // Directly under the figure it explains, before the reimbursement, which it has nothing to do with
+    (ahead.length ? '<p class="to-come">' + L.stillToCome(money(aheadPay), ahead.length) + "</p>" : "") +
     '<p class="total-line reimburse"><span>' + L.reimbursement + "</span><strong>" + money(totals.expenses) + "</strong></p>" +
     '<dl class="total-breakdown">' +
     rows.filter((row) => row[1]).map((row) => "<div><dt>" + row[0] + "</dt><dd>" + row[2] + "</dd></div>").join("") +
@@ -2187,7 +2200,7 @@ function renderPayLines(lines) {
     const parts = [
       ["pay-type", L.types[line.type]],
       ["pay-when", lineWhen(line)],
-      ["pay-detail" + (line.missingTimes ? " needs-times" : ""), lineDetail(line)],
+      ["pay-detail" + (line.missingTimes && !stillToCome(line) ? " needs-times" : ""), lineDetail(line)],
       ["pay-amount", line.missingTimes && line.type !== "Event" ? "–" : moneyFormat.format(line.salary)],
     ];
     parts.forEach(([className, text]) => {
@@ -2212,7 +2225,7 @@ function lineWhen(line) {
 }
 
 function lineDetail(line) {
-  if (line.missingTimes) return L.noTimes;
+  if (line.missingTimes) return stillToCome(line) ? L.toCome : L.noTimes;
   const parts = [formatHours(line.hours)];
   if (line.extraHours) parts.push(L.extra(formatHours(line.extraHours)));
   if (line.night) parts.push(L.nightPay(moneyFormat.format(line.night)));

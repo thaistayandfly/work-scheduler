@@ -18,7 +18,7 @@
   check("Timed shifts and Other jobs show their times and amount", meta(1).textContent === "Warehouse 9:00 AM–5:30 PM\nOther 6:00 PM–8:00 PM, ₪300.00", meta(1).textContent);
   check("Future shifts don't ask for times", meta(3).hidden, meta(3).textContent);
   const banner = document.getElementById("needsTimesBtn");
-  check("The banner counts past shifts missing times (this month and last)", !banner.hidden && banner.textContent === "3 past shifts still need their times", banner.textContent);
+  check("The banner counts past shifts missing times (this month and last)", !banner.hidden && banner.textContent === "3 shifts still need their times", banner.textContent);
 
   // Monday: an Event with no times yet
   rows[0].querySelector(".day-label").click();
@@ -71,7 +71,7 @@
   // English shows AM/PM unless this phone was told otherwise
   check("The panel closes and the board shows the new times", !panel.open && meta(0).textContent === "Event 6:00 AM–4:00 AM (+1), night, ₪330.00 expenses" && !meta(0).classList.contains("needs-times"),
     "open=" + panel.open + " meta=" + meta(0).textContent);
-  check("The banner count drops after saving", banner.textContent === "2 past shifts still need their times", banner.textContent);
+  check("The banner count drops after saving", banner.textContent === "2 shifts still need their times", banner.textContent);
 
   // Wednesday: nothing saved, so the day opens straight into an Other job
   rows[2].querySelector(".day-label").click();

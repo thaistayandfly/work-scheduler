@@ -11,7 +11,7 @@
   check("The Pay tab shows; the board and save bar are hidden",
     !$("payView").hidden && $("workspace").hidden && $("saveBar").hidden && $("tabPay").getAttribute("aria-pressed") === "true", "payView.hidden=" + $("payView").hidden);
   check("The month is named", $("monthTitle").textContent === "September 2026", $("monthTitle").textContent);
-  check("The status says the total isn't final yet", $("payStatus").textContent === "7 shifts have no times yet, so this total isn't final.", $("payStatus").textContent);
+  check("The status says the total isn't final yet", $("payStatus").textContent === "2 shifts you've worked have no times yet, so this total isn't final.", $("payStatus").textContent);
   check("Total to pay is the gross salary, without expenses", total() === "₪4,667.50", total());
   const reimburse = $("payTotals").querySelector(".total-line.reimburse strong");
   check("Expenses reimbursement is shown on its own", !!reimburse && reimburse.textContent === "₪370.00", reimburse && reimburse.textContent);
@@ -19,6 +19,10 @@
   check("Breakdown by type",
     breakdown === "Warehouse4 shifts · 8 h 30 min · ₪467.50 | Event5 days · 10 h 00 min extra · ₪3,700.00 | Nights1 night · ₪200.00 | Other1 job · ₪300.00",
     breakdown);
+  // Part of that total hasn't been worked yet, which the screen has to say rather than leave to be guessed
+  const ahead = $("payTotals").querySelector(".to-come");
+  check("It says how much of the total is work still to come",
+    !!ahead && /^Includes ₪[\d,.]+ for \d+ shifts still to come\.$/.test(ahead.textContent), ahead ? ahead.textContent : "nothing said");
 
   const lines = [...$("payLines").querySelectorAll(".pay-line")];
   const text = (i, cls) => (lines[i] ? lines[i].querySelector("." + cls).textContent : "");
@@ -29,6 +33,11 @@
     text(1, "pay-detail") === "22 h 00 min · 10 h 00 min extra · night ₪200.00 · expenses ₪370.00" && text(1, "pay-amount") === "₪1,500.00",
     text(1, "pay-detail") + " / " + text(1, "pay-amount"));
   check("A Warehouse shift without times shows no pay yet", text(0, "pay-detail") === "No times yet" && text(0, "pay-amount") === "–", text(0, "pay-detail") + " / " + text(0, "pay-amount"));
+  const future = lines.find((l) => l.querySelector(".pay-detail").textContent === "Still to come");
+  check("A shift that hasn't happened says so, instead of being chased for its times",
+    !!future && !future.querySelector(".pay-detail").classList.contains("needs-times"),
+    future ? "found, needs-times=" + future.querySelector(".pay-detail").classList.contains("needs-times") : "no row says it's still to come");
+
   const other = lines.find((l) => l.classList.contains("type-other"));
   check("An Other job shows its description and amount",
     !!other && other.querySelector(".pay-detail").textContent === "2 h 00 min · Move speakers" && other.querySelector(".pay-amount").textContent === "₪300.00",
