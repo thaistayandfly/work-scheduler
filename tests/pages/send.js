@@ -125,9 +125,12 @@
   await wait(700);
   check("A new rate doesn't change a month that was sent", total() === "₪670.00", total());
   await timeShift(null, "22:00"); // now 14 hours
+  // Compared as a local time: the same moment is written as a different UTC string in every time zone
+  const lastEdit = window.__requests.filter((r) => r.method === "PATCH").pop();
+  const endsAt = lastEdit ? new Date(JSON.parse(lastEdit.body).end.dateTime) : null;
   check("Reopening a timed shift keeps the times it already had, so only the end had to change",
-    (window.__requests.filter((r) => r.method === "PATCH").pop() || { body: "" }).body.indexOf("T15:00") > -1,
-    (window.__requests.filter((r) => r.method === "PATCH").pop() || { body: "no PATCH" }).body.slice(0, 120));
+    !!endsAt && endsAt.getHours() === 22 && endsAt.getMinutes() === 0,
+    lastEdit ? lastEdit.body.slice(0, 120) : "no PATCH at all");
   check("A calendar change after sending is flagged",
     / Your calendar changed after you sent this month\. Reopen it to send a correction\.$/.test(status()) && $("sendStatus").classList.contains("is-warning"), status());
 

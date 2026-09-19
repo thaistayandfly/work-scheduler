@@ -61,6 +61,8 @@ const UI_TEXT = {
     noCalendarAccess: "Calendar access wasn't granted — sign in again and allow Google Calendar",
     sessionExpired: "Session expired — please sign in again",
     offlineBanner: "You're offline. ShiftBoard still opens, but your shifts live in Google Calendar — they'll load when you're back on the internet.",
+    offlineSince: (date, time) =>
+      "You're offline. These are your shifts as they were on " + date + " at " + time + " — they'll refresh when you're back.",
     offlineToast: "You're offline — ShiftBoard can't reach Google right now",
     backOnline: "Back online",
     mainCalendar: " (main)",
@@ -263,6 +265,8 @@ const UI_TEXT = {
     noCalendarAccess: "לא ניתנה גישה ליומן. היכנסו שוב ואשרו גישה ליומן Google",
     sessionExpired: "תם זמן החיבור. היכנסו שוב",
     offlineBanner: "אין חיבור לאינטרנט. האפליקציה נפתחת, אבל המשמרות שמורות ביומן Google ויופיעו כשהחיבור יחזור.",
+    offlineSince: (date, time) =>
+      "אין חיבור לאינטרנט. אלו המשמרות שלכם כפי שהיו ב־" + date + " בשעה " + time + " — הן יתעדכנו כשהחיבור יחזור.",
     offlineToast: "אין חיבור לאינטרנט. לא הצלחנו להגיע ל‑Google כרגע",
     backOnline: "החיבור חזר",
     mainCalendar: " (ראשי)",

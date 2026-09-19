@@ -23,6 +23,7 @@ const CHECKS = [
 const IN_PAGE = [
   ["A day's panel: times, nights, expenses, Other jobs", "phase1.js", "en-loaded.html"],
   ["The offline notice, clear of the tabs", "offline-notice.js", "en-loaded.html"],
+  ["Shifts kept for when there's no signal", "offline-cache.js", "en-loaded.html"],
   ["The Pay tab", "pay.js", "en-pay.html"],
   ["Writing a month into the pay sheet", "sheet.js", "en-pay.html"],
   ["Sending a month, then correcting it", "send.js", "en-pay.html"],

@@ -354,9 +354,12 @@ function isNetworkError(err) {
 
 const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
-function showOffline(on) {
+function showOffline(on, at) {
   const banner = el("offlineBanner");
-  if (banner) banner.hidden = !on;
+  if (!banner) return;
+  banner.hidden = !on;
+  // When there are kept shifts on screen, say how old they are rather than leaving people to guess
+  if (on) banner.textContent = at ? L.offlineSince(shownDate(new Date(at)), clock(new Date(at))) : L.offlineBanner;
 }
 
 // Skips the toast when apiFetch just signed the user out — it already said "Session expired"
@@ -730,35 +733,101 @@ function loadWeeks(list) {
   fetchEvents(start, end)
     .then((items) => {
       if (seq !== boardSeq) return; // the board was rebuilt (e.g. another calendar) in the meantime
-      const saved = {}; // "2026-09-14|Event" -> [calendar event, ...]; "Other" jobs are grouped the same way
-      items.forEach((item) => {
-        const ds = eventDate(item);
-        const type = workTypeOf(item);
-        if (ds && type) (saved[ds + "|" + type] = saved[ds + "|" + type] || []).push(item);
-      });
-      // Rebuild from what's actually in the calendar (so deleted events don't linger as "unsaved"),
-      // keeping toggles the user hasn't saved yet — including ones that just failed to save
-      list.forEach((first) => {
-        weekDates(first).forEach((ds) => {
-          WORK_TYPES.forEach((type) => {
-            const entry = daysState[ds][type];
-            const unsaved = entry.active !== entry.originalActive;
-            entry.events = saved[ds + "|" + type] || [];
-            entry.eventIds = entry.events.map((ev) => ev.id);
-            entry.originalActive = entry.events.length > 0;
-            if (!unsaved) entry.active = entry.originalActive;
-          });
-          daysState[ds].others = saved[ds + "|" + OTHER] || [];
-          syncDay(ds);
-        });
-      });
+      showWeeks(items, list);
+      keepShifts(list, items); // so there's something to show next time there's no signal
       setWeeksBusy(list, false);
+      showOffline(false);
     })
     .catch((err) => {
       if (seq !== boardSeq) return;
+      // No signal, but these weeks were read once before: show what was read, and say how old it is
+      const kept = isNetworkError(err) || isOffline() ? keptShifts(list) : null;
+      if (kept) {
+        showWeeks(kept.items, list);
+        setWeeksBusy(list, false);
+        showOffline(true, kept.at);
+        return;
+      }
       setWeeksBusy(list, false, true);
       showApiError(L.errLoadShifts, err);
     });
+}
+
+// Rebuilds the given weeks from a set of calendar events, whether they came from Google just now or
+// from what was kept on the phone. Toggles nobody has saved yet survive it — including ones that just
+// failed to save — while events deleted elsewhere stop lingering as though they were still there.
+function showWeeks(items, list) {
+  const saved = {}; // "2026-09-14|Event" -> [calendar event, ...]; "Other" jobs are grouped the same way
+  items.forEach((item) => {
+    const ds = eventDate(item);
+    const type = workTypeOf(item);
+    if (ds && type) (saved[ds + "|" + type] = saved[ds + "|" + type] || []).push(item);
+  });
+  list.forEach((first) => {
+    weekDates(first).forEach((ds) => {
+      WORK_TYPES.forEach((type) => {
+        const entry = daysState[ds][type];
+        const unsaved = entry.active !== entry.originalActive;
+        entry.events = saved[ds + "|" + type] || [];
+        entry.eventIds = entry.events.map((ev) => ev.id);
+        entry.originalActive = entry.events.length > 0;
+        if (!unsaved) entry.active = entry.originalActive;
+      });
+      daysState[ds].others = saved[ds + "|" + OTHER] || [];
+      syncDay(ds);
+    });
+  });
+}
+
+// ---------- What the phone remembers ----------
+
+// Only the parts of an event this app understands are kept, so nothing else from someone's calendar
+// is written to their phone, and the store stays small
+const slimEvent = (e) => ({
+  id: e.id,
+  summary: e.summary,
+  start: e.start,
+  end: e.end,
+  extendedProperties: { private: privateProps(e) },
+});
+
+const shiftStoreKey = () => "sb_shifts_" + (selectedCalendarId || "");
+
+function readShiftStore() {
+  try {
+    return JSON.parse(localStorage.getItem(shiftStoreKey()) || "null") || { at: 0, weeks: {} };
+  } catch (e) {
+    return { at: 0, weeks: {} }; // hand-edited or broken data mustn't stop the board
+  }
+}
+
+function keepShifts(list, items) {
+  const store = readShiftStore();
+  store.at = Date.now();
+  list.forEach((first) => {
+    const days = weekDates(first);
+    store.weeks[dateStr(first)] = items.filter((item) => days.indexOf(eventDate(item)) > -1).map(slimEvent);
+  });
+  try {
+    localStorage.setItem(shiftStoreKey(), JSON.stringify(store));
+  } catch (e) {
+    // A full or blocked store is no reason to fail a load that otherwise worked
+  }
+}
+
+// Whatever was kept for these weeks. A week never read stays empty rather than blocking the rest.
+function keptShifts(list) {
+  const store = readShiftStore();
+  if (!store.at) return null;
+  let items = [];
+  let known = false;
+  list.forEach((first) => {
+    const week = store.weeks[dateStr(first)];
+    if (!week) return;
+    known = true;
+    items = items.concat(week);
+  });
+  return known ? { at: store.at, items } : null;
 }
 
 function setWeeksBusy(list, busy, failed = false) {
