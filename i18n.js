@@ -158,6 +158,12 @@ const UI_TEXT = {
     notFinal: (n) => (n === 1 ? "1 shift you've worked has" : n + " shifts you've worked have") + " no times yet, so this total isn't final.",
     toCome: "Still to come",
     stillToCome: (money, n) => "Includes " + money + " for " + (n === 1 ? "1 shift" : n + " shifts") + " still to come.",
+    toComeUncounted: (n) => (n === 1 ? "1 shift is" : n + " shifts are") + " still to come and not in this total yet.",
+    // An Event is worth its day rate the moment it's worked; only an hourly shift can't be valued,
+    // so the whole month is guessed out loud rather than left as a sum to do in your head
+    monthGuess: (money, n, hours) =>
+      "About " + money + " in all if the " +
+      (n === 1 ? "missing Warehouse day is " + hours + " hours" : n + " missing Warehouse days are " + hours + " hours each") + ".",
     allTimed: "Every shift has its times.",
     totalToPay: "Total to pay",
     grossSalary: "gross salary",
@@ -373,6 +379,13 @@ const UI_TEXT = {
     toCome: "עוד לא התקיימה",
     stillToCome: (money, n) =>
       "כולל " + money + " עבור " + (n === 1 ? "משמרת אחת שעוד לא התקיימה" : n + " משמרות שעוד לא התקיימו") + ".",
+    toComeUncounted: (n) =>
+      (n === 1 ? "משמרת אחת עוד לא התקיימה ואינה נכללת" : n + " משמרות עוד לא התקיימו ואינן נכללות") + " בסכום.",
+    monthGuess: (money, n, hours) =>
+      "בסך הכול כ־" + money + " אם " +
+      (n === 1
+        ? "המשמרת במחסן שחסרות לה שעות הייתה " + hours + " שעות"
+        : n + " המשמרות במחסן שחסרות להן שעות היו " + hours + " שעות כל אחת") + ".",
     allTimed: "לכל המשמרות יש שעות.",
     totalToPay: "סה״כ לתשלום",
     grossSalary: "שכר ברוטו",

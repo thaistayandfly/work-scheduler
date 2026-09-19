@@ -22,7 +22,15 @@
   // Part of that total hasn't been worked yet, which the screen has to say rather than leave to be guessed
   const ahead = $("payTotals").querySelector(".to-come");
   check("It says how much of the total is work still to come",
-    !!ahead && /^Includes ₪[\d,.]+ for \d+ shifts still to come\.$/.test(ahead.textContent), ahead ? ahead.textContent : "nothing said");
+    !!ahead && /^Includes ₪[\d,.]+ for \d+ shifts still to come\./.test(ahead.textContent), ahead ? ahead.textContent : "nothing said");
+  // A Warehouse day is worth nothing until its hours are in, so the month is guessed beside the total,
+  // never inside it — the total is copied straight into the pay sheet and must stay fact
+  const guessed = (ahead.textContent.match(/in all if.*?$/) || [""])[0];
+  check("And guesses the whole month with the missing Warehouse days at 8 hours",
+    /^in all if the \d+ missing Warehouse days are 8 hours each\.$/.test(guessed.replace(/^.*?in all/, "in all")), guessed || ahead.textContent);
+  const guessedTotal = Number((ahead.textContent.match(/About ₪([\d,]+\.\d\d) in all/) || [0, "0"])[1].replace(/,/g, ""));
+  check("The guess is more than the total, and the total itself is untouched",
+    guessedTotal > 4667.5 && total() === "₪4,667.50", "guessed " + guessedTotal + " vs total " + total());
 
   const lines = [...$("payLines").querySelectorAll(".pay-line")];
   const text = (i, cls) => (lines[i] ? lines[i].querySelector("." + cls).textContent : "");

@@ -2139,7 +2139,7 @@ function renderPayMonth() {
       // Zeros everywhere mean nothing until the rates are in, so ask for those instead
       const set = ratesFrom(settings);
       el("paySetup").hidden = !!(settings.full_name && set.warehouse && set.event);
-      renderPayTotals(lines.length ? totals : null, lines);
+      renderPayTotals(lines.length ? totals : null, lines, rates);
       renderPayLines(lines);
       renderSendState();
     })
@@ -2162,7 +2162,11 @@ function renderPayStatus(lines, rates) {
   else status.textContent = L.allTimed;
 }
 
-function renderPayTotals(totals, lines) {
+// What an hourly shift is guessed at when its hours aren't known yet. Only ever said out loud beside the
+// total, never added to it: the total is what the pay sheet and the company are given, and that stays fact.
+const GUESSED_HOURS = 8;
+
+function renderPayTotals(totals, lines, rates) {
   const box = el("payTotals");
   box.innerHTML = "";
   if (!totals) return;
@@ -2171,6 +2175,14 @@ function renderPayTotals(totals, lines) {
   // worked yet, which is worth saying out loud rather than leaving people to work out for themselves.
   const ahead = (lines || []).filter(stillToCome);
   const aheadPay = round2(ahead.reduce((sum, line) => sum + line.salary, 0));
+  // An Event is worth its day rate the moment it's worked, so it needs no guessing. A Warehouse day is
+  // worth nothing until its hours are in — past or future alike — so the month is guessed with those at
+  // eight hours, and the answer given as a finished figure rather than a sum to add up in your head.
+  const hourly = (lines || []).filter((line) => line.type === "Warehouse" && line.missingTimes);
+  const guess = round2(hourly.length * GUESSED_HOURS * ((rates && rates.warehouse) || 0));
+  const aside = [];
+  if (ahead.length) aside.push(aheadPay > 0 ? L.stillToCome(money(aheadPay), ahead.length) : L.toComeUncounted(ahead.length));
+  if (guess > 0) aside.push(L.monthGuess(money(round2(totals.salary + guess)), hourly.length, GUESSED_HOURS));
   const { warehouse, event, nights, other } = totals;
   const rows = [
     [L.types.Warehouse, warehouse.count, L.countShifts(warehouse.count) + " · " + formatHours(warehouse.hours) + " · " + money(warehouse.pay)],
@@ -2182,7 +2194,7 @@ function renderPayTotals(totals, lines) {
   box.innerHTML =
     '<p class="total-line"><span>' + L.totalToPay + " <small>" + L.grossSalary + "</small></span><strong>" + money(totals.salary) + "</strong></p>" +
     // Directly under the figure it explains, before the reimbursement, which it has nothing to do with
-    (ahead.length ? '<p class="to-come">' + L.stillToCome(money(aheadPay), ahead.length) + "</p>" : "") +
+    (aside.length ? '<p class="to-come">' + aside.join(" ") + "</p>" : "") +
     '<p class="total-line reimburse"><span>' + L.reimbursement + "</span><strong>" + money(totals.expenses) + "</strong></p>" +
     '<dl class="total-breakdown">' +
     rows.filter((row) => row[1]).map((row) => "<div><dt>" + row[0] + "</dt><dd>" + row[2] + "</dd></div>").join("") +
