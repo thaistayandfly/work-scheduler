@@ -2180,8 +2180,18 @@ function renderPayTotals(totals, lines, rates) {
   // eight hours, and the answer given as a finished figure rather than a sum to add up in your head.
   const hourly = (lines || []).filter((line) => line.type === "Warehouse" && line.missingTimes);
   const guess = round2(hourly.length * GUESSED_HOURS * ((rates && rates.warehouse) || 0));
+  const counted = ahead.filter((line) => line.salary > 0).length;
   const aside = [];
-  if (ahead.length) aside.push(aheadPay > 0 ? L.stillToCome(money(aheadPay), ahead.length) : L.toComeUncounted(ahead.length));
+  if (!ahead.length) {
+    // nothing ahead to explain
+  } else if (!counted) {
+    aside.push(L.toComeUncounted(ahead.length));
+  } else if (counted === ahead.length) {
+    aside.push(L.stillToCome(money(aheadPay), ahead.length));
+  } else {
+    // The money belongs to some of them, not all, and saying "for 2 shifts" reads as though it covered both
+    aside.push(L.someToCome(money(aheadPay), counted, ahead.length));
+  }
   if (guess > 0) aside.push(L.monthGuess(money(round2(totals.salary + guess)), hourly.length, GUESSED_HOURS));
   const { warehouse, event, nights, other } = totals;
   const rows = [

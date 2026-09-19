@@ -21,8 +21,10 @@
     breakdown);
   // Part of that total hasn't been worked yet, which the screen has to say rather than leave to be guessed
   const ahead = $("payTotals").querySelector(".to-come");
-  check("It says how much of the total is work still to come",
-    !!ahead && /^Includes ₪[\d,.]+ for \d+ shifts still to come\./.test(ahead.textContent), ahead ? ahead.textContent : "nothing said");
+  // Three of the five ahead are Events, worth their day rate already; the other two are Warehouse days
+  // worth nothing until their hours are in, so the money must not read as covering all five
+  check("It says how many of the shifts still to come that money is actually for",
+    !!ahead && /^Includes ₪1,800\.00 for 3 of the 5 shifts still to come\./.test(ahead.textContent), ahead ? ahead.textContent : "nothing said");
   // A Warehouse day is worth nothing until its hours are in, so the month is guessed beside the total,
   // never inside it — the total is copied straight into the pay sheet and must stay fact
   const guessed = (ahead.textContent.match(/in all if.*?$/) || [""])[0];
